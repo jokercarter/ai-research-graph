@@ -52,7 +52,7 @@ python data/merge_openalex_graphs.py `
 
 合并器会按 OpenAlex ID 去重，并从 2023 年以来的 AI / machine learning 种子沿 `source -> target` 引用边计算遍历层级。
 
-将生成的 JSON 复制到 `frontend/data.sample.json` 后刷新网站即可。当前联合快照显示 OpenAlex Computer Science 核心类型目录的 5,435,295 篇期望分母和 2,200 篇目录样本（0.0405%）；它是可复现的有限样本，不代表近十年 AI/CS 论文的完整覆盖。完整导入需要 API key、断点续传、去重和持续覆盖率审计。
+将生成的 JSON 压缩为 `frontend/data.sample.json.gz` 后刷新网站即可；页面会在浏览器端解压。当前联合快照显示 OpenAlex Computer Science 核心类型目录的 5,435,295 篇期望分母和 2,200 篇目录样本（0.0405%）；它是可复现的有限样本，不代表近十年 AI/CS 论文的完整覆盖。完整导入需要 API key、断点续传、去重和持续覆盖率审计。
 
 ## 目录
 

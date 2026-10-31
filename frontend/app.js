@@ -64,11 +64,24 @@ function normalizeData(raw) {
   return { nodes, edges };
 }
 
+async function fetchSnapshot() {
+  const response = await fetch("data.sample.json.gz", { cache: "no-store" });
+  if (!response.ok) throw new Error(`HTTP ${response.status}`);
+  const bytes = new Uint8Array(await response.arrayBuffer());
+  let text = new TextDecoder().decode(bytes);
+  // Sites serves the gzip asset as a normal static file. If a proxy has
+  // already decompressed it, the JSON bytes are parsed directly instead.
+  if (bytes[0] === 0x1f && bytes[1] === 0x8b) {
+    if (!("DecompressionStream" in window)) throw new Error("浏览器不支持 gzip 解压");
+    const stream = new Blob([bytes]).stream().pipeThrough(new DecompressionStream("gzip"));
+    text = await new Response(stream).text();
+  }
+  return JSON.parse(text);
+}
+
 async function loadData() {
   try {
-    const response = await fetch("data.sample.json", { cache: "no-store" });
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    const raw = await response.json();
+    const raw = await fetchSnapshot();
     state.snapshot = raw;
     state.data = normalizeData(raw);
     state.stats = datasetStats(raw, state.data);
