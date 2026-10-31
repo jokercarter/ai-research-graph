@@ -1,12 +1,12 @@
-# OpenAlex citation graph data
+# AI/CS citation graph data
 
 This directory contains the reproducible data path for the AI Research Graph website.
 
-The current website snapshot is `ai_cs_graph_coverage_10000.json`: a 9,871-work OpenAlex graph with 46,231 directed citation edges. It unions the 7,916-work, two-layer recursive graph with a 2,200-work year-balanced Computer Science catalogue sample and the existing multi-topic AI/CS slice. `recursive_graph_10000.json` remains the recursive source, `recursive_graph_1000.json` remains the smaller first-layer snapshot, `cs_field_catalog_2200.json` records the auditable field-filtered sample, and `sample_graph.json` remains the smoke-test fixture.
+The current website snapshot is `ai_cs_graph_citationcs_35000.json.gz`: a 33,425-work union with 172,138 directed citation edges. It combines the 7,916-work OpenAlex two-layer recursive graph, a 2,200-work year-balanced Computer Science catalogue sample, the multi-topic AI/CS slice, and a 24,881-work two-layer CitationCS traversal. `recursive_graph_10000.json` remains the recursive source, `cs_field_catalog_2200.json` records the auditable field-filtered sample, `citationcs_ai_cs_slice.json.gz` records the offline traversal, and `sample_graph.json` remains the smoke-test fixture.
 
 ## What is authoritative
 
-`collect_openalex_graph.py` reads metadata and citation edges from the public [OpenAlex API](https://docs.openalex.org/). A directed edge `A -> B` exists only when OpenAlex lists work `B` in work `A`'s `referenced_works` field. The collector never infers a citation from title similarity and never invents an edge.
+`collect_openalex_graph.py` reads metadata and citation edges from the public [OpenAlex API](https://docs.openalex.org/). A directed edge `A -> B` exists only when OpenAlex lists work `B` in work `A`'s `referenced_works` field. `import_citationcs.py` reads CitationCS `ref_lst` edges from the local Zenodo archive. The collectors never infer a citation from title similarity and never invent an edge.
 
 The output JSON has:
 
@@ -74,7 +74,8 @@ python data/merge_recursive_catalog.py `
   --recursive data/recursive_graph_10000.json `
   --catalog data/cs_field_catalog_2200.json `
   --topic-slice data/ai_cs_graph_expanded.json `
-  --out data/ai_cs_graph_coverage_10000.json
+  --citationcs data/citationcs_ai_cs_slice.json.gz `
+  --out data/ai_cs_graph_citationcs_35000.json.gz
 ```
 
 The union retains `coverage.catalog_expected_count`, `coverage.catalog_sample_count`, and `coverage.catalog_sample_fraction`. It is explicitly marked `meta.is_exhaustive: false`; the denominator is a measurement for planning a larger import, not a claim that the JSON contains every eligible work.
@@ -102,3 +103,46 @@ python data/collect_openalex_catalog.py `
 ```
 
 The verified run in this workspace retrieved 2,200 nodes (200 from each of 11 yearly slices) and 15,757 citation edges. OpenAlex reported an expected denominator of 5,435,295 matching works for the exact field/type/window filter, so the run's measured coverage is 0.0405%. The output marks `meta.is_exhaustive: false` and preserves `coverage.slices`; complete coverage requires repeated resumable imports with an API key and storage budget.
+
+## CitationCS offline traversal
+
+CitationCS is a static Zenodo archive ([10.5281/zenodo.16537950](https://zenodo.org/records/16537950)) containing 3,720,575 papers and 22,908,275 internal citations. Records use OpenAlex `W...` identifiers and a `ref_lst` list. The downloader supports HTTP range requests and MD5 validation; the importer filters Computer Science primary topics, selects recent/AI-prioritized seeds, and follows `ref_lst` for a bounded depth.
+
+```powershell
+python data/download_citationcs.py `
+  --out D:\research\citation_cache\citation_cs.zip
+python data/import_citationcs.py `
+  --archive D:\research\citation_cache\citation_cs.zip `
+  --existing data/ai_cs_graph_citationcs_35000.json.gz `
+  --depth 2 --max-seeds 7000 --max-nodes 25000 `
+  --out data/citationcs_ai_cs_slice.json.gz
+```
+
+The verified local run emitted 24,881 nodes and 127,279 edges. It is marked
+`meta.is_exhaustive: false`; the archive is a useful static CS base, not a
+real-time or complete ten-year AI/CS census. CitationCS edges retain
+`source_system: "citationcs"` and are not relabeled as OpenAlex relations.
+
+## Semantic Scholar supplement when OpenAlex API quota is exhausted
+
+`collect_semanticscholar_graph.py` provides a bounded, provider-separated fallback
+for citation expansion. It uses Semantic Scholar bulk search (optional) and the
+paper `references` endpoint, then hydrates reference metadata through the batch
+endpoint. IDs are emitted as `s2:<paperId>` and every edge has
+`source_system: "semanticscholar"`; no title-similarity or other inferred edges
+are added. A run is explicitly marked `meta.is_exhaustive: false`.
+
+```powershell
+python data/collect_semanticscholar_graph.py `
+  --query "machine learning" --year 2016-2026 `
+  --seed-limit 100 --max-references-per-seed 200 `
+  --out data/s2_ml_graph.json
+```
+
+For an exact seed, use `--seed-id ARXIV:1706.03762` or `--seed-id DOI:10...`.
+Set `SEMANTIC_SCHOLAR_API_KEY` when available and keep the delay conservative;
+unauthenticated traffic is shared and can return HTTP 429. For corpus-scale
+imports, prefer the monthly S2AG datasets through the Datasets API rather than
+issuing one request per paper. Reconcile S2 IDs to OpenAlex IDs only through
+DOI/arXiv identifiers (or an auditable title-author-year match), and retain the
+provider on each node and edge.

@@ -2,7 +2,13 @@
 
 ## Scope
 
-This audit compares the existing keyword/recursive collectors with a broader, field-filtered catalogue mode. It uses the current worktree and a live OpenAlex metadata count from the exact roadmap window (`2016-11-01` through `2026-10-31`). The website now uses the reproducible union `ai_cs_graph_coverage_10000.json`, which combines the recursive snapshot, the verified catalogue sample, and the existing multi-topic AI/CS slice.
+This audit compares the existing keyword/recursive collectors with a broader, field-filtered catalogue mode and a local CitationCS traversal. It uses the exact roadmap window (`2016-11-01` through `2026-10-31`). The website now uses the reproducible union `ai_cs_graph_citationcs_35000.json.gz`, which combines OpenAlex recursive/catalogue/topic slices with a CitationCS two-layer subgraph.
+
+## Current website snapshot
+
+The current union contains **33,425 nodes** and **172,138 directed citation edges**. It includes the 7,916-node OpenAlex recursive source, 2,200 field-filtered catalogue nodes, 1,063 multi-topic slice nodes, and a 24,881-node CitationCS traversal. The CitationCS traversal adds 23,554 nodes to the union and contributes 127,279 unique edges before cross-source de-duplication. The website carries `source_system` and `provenance_sources` on edges so the two providers remain distinguishable.
+
+CitationCS is a static 2025-07-28 Zenodo archive with 3,720,575 papers and 22,908,275 internal citations. Its records use OpenAlex `W...` identifiers and `ref_lst`; the importer filters Computer Science primary topics, chooses recent/AI-prioritized seeds, and follows references to depth 2. The traversal is a bounded slice, not a claim that the archive or the ten-year AI/CS corpus is fully rendered.
 
 ## What the existing collectors actually cover
 
@@ -69,4 +75,4 @@ The 5,435,295 denominator is the sum of the per-year OpenAlex counts for the exa
 
 ## Conclusion
 
-The current project has a working citation graph and a reproducible recursive expansion. The new catalogue mode is the concrete improvement needed to measure and progressively approach ten-year AI/CS coverage. A complete all-record import remains an ingestion project measured against the 5.4 million-work denominator, not a property of any bounded JSON snapshot.
+The current project has a working citation graph and two reproducible expansion paths: OpenAlex API traversal/catalogue sampling and the local CitationCS archive traversal. The combined website comfortably exceeds the 1,000-node requirement and now exposes a much larger relation graph. A complete all-record import remains an ingestion project measured against the 5.4 million-work OpenAlex denominator; neither this bounded JSON snapshot nor the CitationCS subgraph should be described as the full ten-year AI/CS census.

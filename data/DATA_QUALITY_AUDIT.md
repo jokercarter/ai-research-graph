@@ -2,9 +2,9 @@
 
 ## Website snapshot
 
-The current website uses `data/ai_cs_graph_coverage_10000.json`, a union of the recursive source, `data/cs_field_catalog_2200.json`, and the existing multi-topic AI/CS slice. The union contains **9,871 nodes** and **46,231 directed citation edges** after OpenAlex ID de-duplication. It adds **1,582** catalog-only nodes and **373** topic-slice-only nodes; the catalogue contributes **11,498** unique edges touching catalog additions, and the topic slice contributes **944** additional unique edges. The catalog denominator is **5,435,295** works for the exact Computer Science field/type/date filter; the 2,200-work catalog sample is **0.0405%** of that denominator and is marked non-exhaustive.
+The current website uses `data/ai_cs_graph_citationcs_35000.json.gz`, a union of the OpenAlex recursive source, `data/cs_field_catalog_2200.json`, the multi-topic AI/CS slice, and `data/citationcs_ai_cs_slice.json.gz`. The union contains **33,425 nodes** and **172,138 directed citation edges** after endpoint and pair de-duplication. It adds **1,582** catalog-only nodes, **373** topic-slice-only nodes, and **23,554** CitationCS-only nodes. The catalog denominator is **5,435,295** works for the exact Computer Science field/type/date filter; the 2,200-work catalog sample is **0.0405%** of that denominator and is marked non-exhaustive. CitationCS contributes a bounded 24,881-node traversal from a 3,720,575-paper archive.
 
-The union was validated with no missing edge endpoints, duplicate endpoint pairs, or self-loops. Every edge remains a copied OpenAlex `referenced_works` relation. `coverage.catalog_expected_count`, `coverage.catalog_sample_count`, and `coverage.catalog_sample_fraction` are carried in the JSON so the UI can show the coverage boundary.
+The union was validated with no missing edge endpoints, duplicate endpoint pairs, or self-loops. Every edge remains a copied provider relation: OpenAlex `referenced_works` or CitationCS `ref_lst`. `coverage.catalog_expected_count`, `coverage.catalog_sample_count`, `coverage.catalog_sample_fraction`, and CitationCS dataset/sample counts are carried in the JSON so the UI can show the coverage boundary.
 
 ## Recursive source snapshot audited
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Union recursive, catalogue, and optional topic-slice citation graphs.
+"""Union OpenAlex, CitationCS, catalogue, and optional topic-slice graphs.
 
 The recursive snapshot provides a connected relevance-first view.  The
 catalogue slice adds a deterministic sample from every year in the exact
@@ -10,6 +10,7 @@ that it is a bounded sample rather than an exhaustive import.
 from __future__ import annotations
 
 import argparse
+import gzip
 import json
 from collections import Counter
 from datetime import datetime, timezone
@@ -22,11 +23,15 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--recursive", default="data/recursive_graph_10000.json")
     parser.add_argument("--catalog", default="data/cs_field_catalog_2200.json")
     parser.add_argument("--topic-slice", action="append", default=[], help="Optional topic-slice JSON; repeatable")
-    parser.add_argument("--out", default="data/ai_cs_graph_coverage_9500.json")
+    parser.add_argument("--citationcs", action="append", default=[], help="Optional CitationCS traversal JSON; repeatable")
+    parser.add_argument("--out", default="data/ai_cs_graph_citationcs_35000.json")
     return parser.parse_args()
 
 
 def read_json(path: str) -> dict[str, Any]:
+    if str(path).endswith(".gz"):
+        with gzip.open(path, "rt", encoding="utf-8") as handle:
+            return json.load(handle)
     return json.loads(Path(path).read_text(encoding="utf-8"))
 
 
@@ -35,6 +40,7 @@ def main() -> int:
     recursive = read_json(args.recursive)
     catalog = read_json(args.catalog)
     topic_payloads = [(path, read_json(path)) for path in args.topic_slice]
+    citationcs_payloads = [(path, read_json(path)) for path in args.citationcs]
 
     nodes: dict[str, dict[str, Any]] = {}
     for raw in recursive.get("nodes", []):
@@ -102,9 +108,38 @@ def main() -> int:
             nodes[work_id] = node
             new_topic_slice_ids.add(work_id)
 
+    citationcs_ids: set[str] = set()
+    new_citationcs_ids: set[str] = set()
+    for path, citationcs_payload in citationcs_payloads:
+        for raw in citationcs_payload.get("nodes", []):
+            work_id = raw.get("id")
+            if not work_id:
+                continue
+            work_id = str(work_id)
+            citationcs_ids.add(work_id)
+            if work_id in nodes:
+                nodes[work_id]["citationcs_membership"] = True
+                nodes[work_id]["citationcs_seed"] = bool(nodes[work_id].get("citationcs_seed") or raw.get("is_seed"))
+                nodes[work_id].setdefault("citationcs_sources", [])
+                if path not in nodes[work_id]["citationcs_sources"]:
+                    nodes[work_id]["citationcs_sources"].append(path)
+                continue
+            node = dict(raw)
+            node.update(
+                {
+                    "citationcs_membership": True,
+                    "citationcs_seed": bool(raw.get("is_seed")),
+                    "citationcs_sources": [path],
+                    "is_external_reference": bool(raw.get("is_external_reference")),
+                }
+            )
+            nodes[work_id] = node
+            new_citationcs_ids.add(work_id)
+
     edge_by_key: dict[tuple[str, str], dict[str, Any]] = {}
     edge_sources: list[tuple[str, dict[str, Any]]] = [("recursive", recursive), ("catalog", catalog)]
     edge_sources.extend((f"topic_slice:{path}", payload) for path, payload in topic_payloads)
+    edge_sources.extend((f"citationcs:{path}", payload) for path, payload in citationcs_payloads)
     for source_name, payload in edge_sources:
         for raw in payload.get("edges", []):
             source = str(raw.get("source"))
@@ -141,18 +176,18 @@ def main() -> int:
         "generated_at": now,
         "meta": {
             "title": "AI and Computer Science citation graph with coverage sample",
-            "description": "Union of a two-hop OpenAlex citation traversal, a year-balanced Computer Science catalogue sample, and optional topic slices.",
+            "description": "Union of OpenAlex citation traversal, CitationCS local traversal, a year-balanced Computer Science catalogue sample, and optional topic slices.",
             "window": {"from": "2016-11-01", "to": "2026-10-31"},
             "is_exhaustive": False,
             "core_publication_types": sorted(core_types),
         },
         "provenance": {
-            "provider": "OpenAlex",
+            "provider": "OpenAlex + CitationCS",
             "api": "https://api.openalex.org",
             "works_endpoint": "https://api.openalex.org/works",
             "citation_field": "referenced_works",
             "edge_semantics": "source work cites target work",
-            "expansion": "recent keyword seeds -> referenced_works -> referenced_works, unioned with yearly Computer Science catalogue slices and optional topic slices",
+            "expansion": "recent keyword seeds -> referenced_works -> referenced_works, unioned with CitationCS ref_lst traversal, yearly Computer Science catalogue slices, and optional topic slices",
             "documentation": "https://docs.openalex.org/",
             "no_inferred_edges": True,
         },
@@ -164,12 +199,18 @@ def main() -> int:
             "catalog_sample_fraction": (len(catalog_ids) / catalog_expected) if catalog_expected else None,
             "catalog_manifest": catalog_coverage.get("slices", []),
             "topic_slice_sources": [path for path, _ in topic_payloads],
+            "citationcs_sources": [path for path, _ in citationcs_payloads],
+            "citationcs_dataset_nodes": sum(int((payload.get("meta") or {}).get("dataset_total_records") or 0) for _, payload in citationcs_payloads),
+            "citationcs_dataset_edges": sum(int((payload.get("meta") or {}).get("dataset_internal_citations") or 0) for _, payload in citationcs_payloads),
+            "citationcs_sample_count": len(citationcs_ids),
+            "citationcs_new_nodes_in_union": len(new_citationcs_ids),
             "is_exhaustive": False,
         },
         "query": {
             "recursive_snapshot": args.recursive,
             "catalog_snapshot": args.catalog,
             "topic_slice_snapshots": args.topic_slice,
+            "citationcs_snapshots": args.citationcs,
             "recursive_stats": recursive_stats,
             "catalog_stats": catalog.get("stats", {}),
         },
@@ -189,13 +230,21 @@ def main() -> int:
             "topic_slice_nodes": len(topic_slice_ids),
             "topic_slice_new_nodes": len(new_topic_slice_ids),
             "topic_slice_edges": sum(len(payload.get("edges", [])) for _, payload in topic_payloads),
+            "citationcs_nodes": len(citationcs_ids),
+            "citationcs_new_nodes": len(new_citationcs_ids),
+            "citationcs_edges": sum(len(payload.get("edges", [])) for _, payload in citationcs_payloads),
         },
         "nodes": list(nodes.values()),
         "edges": list(edge_by_key.values()),
     }
     output = Path(args.out)
     output.parent.mkdir(parents=True, exist_ok=True)
-    output.write_text(json.dumps(payload, ensure_ascii=False, separators=(",", ":")) + "\n", encoding="utf-8")
+    serialized = json.dumps(payload, ensure_ascii=False, separators=(",", ":")) + "\n"
+    if str(output).endswith(".gz"):
+        with gzip.open(output, "wt", encoding="utf-8", compresslevel=9) as handle:
+            handle.write(serialized)
+    else:
+        output.write_text(serialized, encoding="utf-8")
     print(
         f"wrote {output} ({payload['stats']['nodes']} nodes, "
         f"{payload['stats']['edges']} edges; catalog {len(catalog_ids)} / {catalog_expected}; "

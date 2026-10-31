@@ -116,7 +116,11 @@ function datasetStats(raw, data) {
       ? {
           catalogExpectedCount: Number(raw.coverage.catalog_expected_count) || 0,
           catalogSampleCount: Number(raw.coverage.catalog_sample_count) || 0,
-          catalogSampleFraction: Number(raw.coverage.catalog_sample_fraction) || 0
+          catalogSampleFraction: Number(raw.coverage.catalog_sample_fraction) || 0,
+          citationcsDatasetNodes: Number(raw.coverage.citationcs_dataset_nodes) || 0,
+          citationcsDatasetEdges: Number(raw.coverage.citationcs_dataset_edges) || 0,
+          citationcsSampleCount: Number(raw.coverage.citationcs_sample_count) || 0,
+          citationcsNewNodes: Number(raw.coverage.citationcs_new_nodes_in_union) || 0
         }
       : null
   };
@@ -129,9 +133,14 @@ function updateDatasetStats() {
   $("datasetSource").textContent = state.stats.provider || "快照";
   const timestamp = state.stats.generatedAt ? ` · ${state.stats.generatedAt}` : "";
   const coverage = state.stats.coverage;
-  const coverageNote = coverage?.catalogExpectedCount
-    ? `；CS 年度目录样本 ${formatCount(coverage.catalogSampleCount)} / ${formatCount(coverage.catalogExpectedCount)}（${(coverage.catalogSampleFraction * 100).toFixed(4)}%）`
-    : "";
+  const coverageNotes = [];
+  if (coverage?.catalogExpectedCount) {
+    coverageNotes.push(`CS 年度目录样本 ${formatCount(coverage.catalogSampleCount)} / ${formatCount(coverage.catalogExpectedCount)}（${(coverage.catalogSampleFraction * 100).toFixed(4)}%）`);
+  }
+  if (coverage?.citationcsDatasetNodes) {
+    coverageNotes.push(`CitationCS 子图 ${formatCount(coverage.citationcsSampleCount)} / 数据集 ${formatCount(coverage.citationcsDatasetNodes)} 篇`);
+  }
+  const coverageNote = coverageNotes.length ? `；${coverageNotes.join("；")}` : "";
   $("datasetNote").textContent = `完整快照 ${formatCount(state.stats.nodes)} 节点 / ${formatCount(state.stats.edges)} 边${timestamp}${coverageNote}；这是可追溯的有限样本，画布是受限子图，最多渲染 200 个节点，可用搜索或一跳邻域查看局部关系。`;
 }
 
