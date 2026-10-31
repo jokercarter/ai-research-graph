@@ -1,0 +1,905 @@
+{
+  "schema_version": "0.1",
+  "generated_at": "2026-10-31T19:25:34.490829+00:00",
+  "meta": {
+    "title": "AI Research Graph sample",
+    "description": "Real OpenAlex works and citation edges for a small, inspectable graph slice.",
+    "generated_at": "2026-10-31T19:25:34.490829+00:00",
+    "window": "2016-11-01 to 2026-10-31 (roadmap target; sample is a small slice)"
+  },
+  "provenance": {
+    "provider": "OpenAlex",
+    "api": "https://api.openalex.org",
+    "works_endpoint": "https://api.openalex.org/works",
+    "citation_field": "referenced_works",
+    "edge_semantics": "source work cites target work",
+    "documentation": "https://docs.openalex.org/"
+  },
+  "source": {
+    "provider": "OpenAlex",
+    "api": "https://api.openalex.org",
+    "citation_field": "referenced_works"
+  },
+  "scope": {
+    "from_year": 2017,
+    "to_year": 2023
+  },
+  "stats": {
+    "nodes": 11,
+    "edges": 14,
+    "external_nodes": 0
+  },
+  "nodes": [
+    {
+      "id": "https://openalex.org/W2626778328",
+      "openalex_id": "https://openalex.org/W2626778328",
+      "title": "Attention Is All You Need",
+      "publication_year": 2017,
+      "publication_date": "2017-06-12",
+      "type": "preprint",
+      "doi": "https://doi.org/10.48550/arxiv.1706.03762",
+      "arxiv_id": "1706.03762",
+      "landing_page_url": "http://arxiv.org/abs/1706.03762",
+      "open_access_url": "https://arxiv.org/pdf/1706.03762",
+      "authors": [
+        {
+          "id": "https://openalex.org/A5103024730",
+          "name": "Ashish Vaswani"
+        },
+        {
+          "id": "https://openalex.org/A5021878400",
+          "name": "Noam Shazeer"
+        },
+        {
+          "id": "https://openalex.org/A5005777963",
+          "name": "Niki Parmar"
+        },
+        {
+          "id": "https://openalex.org/A5022416424",
+          "name": "Jakob Uszkoreit"
+        },
+        {
+          "id": "https://openalex.org/A5023448834",
+          "name": "Llion Jones"
+        },
+        {
+          "id": "https://openalex.org/A5079288315",
+          "name": "Aidan N. Gomez"
+        },
+        {
+          "id": "https://openalex.org/A5031789995",
+          "name": "Łukasz Kaiser"
+        },
+        {
+          "id": "https://openalex.org/A5045719436",
+          "name": "Illia Polosukhin"
+        }
+      ],
+      "primary_topic": {
+        "id": "https://openalex.org/T10181",
+        "display_name": "Natural Language Processing Techniques",
+        "score": 0.7821999788284302
+      },
+      "topics": [
+        {
+          "id": "https://openalex.org/T10181",
+          "display_name": "Natural Language Processing Techniques",
+          "score": 0.7821999788284302
+        },
+        {
+          "id": "https://openalex.org/T10028",
+          "display_name": "Topic Modeling",
+          "score": 0.19449999928474426
+        },
+        {
+          "id": "https://openalex.org/T10201",
+          "display_name": "Speech Recognition and Synthesis",
+          "score": 0.0052999998442828655
+        }
+      ],
+      "cited_by_count": 120297,
+      "referenced_works_count": 28,
+      "is_external_reference": false,
+      "source": "openalex"
+    },
+    {
+      "id": "https://openalex.org/W2896457183",
+      "openalex_id": "https://openalex.org/W2896457183",
+      "title": "BERT: Pre-training of Deep Bidirectional Transformers for Language Understanding",
+      "publication_year": 2018,
+      "publication_date": "2018-10-11",
+      "type": "preprint",
+      "doi": "https://doi.org/10.48550/arxiv.1810.04805",
+      "arxiv_id": "1810.04805",
+      "landing_page_url": "http://arxiv.org/abs/1810.04805",
+      "open_access_url": "https://arxiv.org/pdf/1810.04805",
+      "authors": [
+        {
+          "id": "https://openalex.org/A5057457287",
+          "name": "Jacob Devlin"
+        },
+        {
+          "id": "https://openalex.org/A5127838054",
+          "name": "Ming-Wei Chang"
+        },
+        {
+          "id": "https://openalex.org/A5159833220",
+          "name": "Kenton Lee"
+        },
+        {
+          "id": "https://openalex.org/A5159955724",
+          "name": "Kristina Toutanova"
+        }
+      ],
+      "primary_topic": {
+        "id": "https://openalex.org/T11596",
+        "display_name": "Constraint Satisfaction and Optimization",
+        "score": 0.18950000405311584
+      },
+      "topics": [
+        {
+          "id": "https://openalex.org/T11596",
+          "display_name": "Constraint Satisfaction and Optimization",
+          "score": 0.18950000405311584
+        },
+        {
+          "id": "https://openalex.org/T10028",
+          "display_name": "Topic Modeling",
+          "score": 0.14429999887943268
+        },
+        {
+          "id": "https://openalex.org/T11010",
+          "display_name": "Logic, Reasoning, and Knowledge",
+          "score": 0.1046999990940094
+        }
+      ],
+      "cited_by_count": 44731,
+      "referenced_works_count": 55,
+      "is_external_reference": false,
+      "source": "openalex"
+    },
+    {
+      "id": "https://openalex.org/W3030163527",
+      "openalex_id": "https://openalex.org/W3030163527",
+      "title": "Language Models are Few-Shot Learners",
+      "publication_year": 2020,
+      "publication_date": "2020-05-28",
+      "type": "preprint",
+      "doi": "https://doi.org/10.48550/arxiv.2005.14165",
+      "arxiv_id": "2005.14165",
+      "landing_page_url": "http://arxiv.org/abs/2005.14165",
+      "open_access_url": "https://arxiv.org/pdf/2005.14165",
+      "authors": [
+        {
+          "id": null,
+          "name": "Brown, Tom B."
+        },
+        {
+          "id": "https://openalex.org/A5084254760",
+          "name": "Benjamin Mann"
+        },
+        {
+          "id": "https://openalex.org/A5080941449",
+          "name": "Nick Ryder"
+        },
+        {
+          "id": "https://openalex.org/A5031060893",
+          "name": "Melanie Subbiah"
+        },
+        {
+          "id": "https://openalex.org/A5053213601",
+          "name": "Jared Kaplan A"
+        },
+        {
+          "id": "https://openalex.org/A5076418776",
+          "name": "Prafulla Dhariwal"
+        },
+        {
+          "id": "https://openalex.org/A5043840749",
+          "name": "Arvind Neelakantan"
+        },
+        {
+          "id": "https://openalex.org/A5083109184",
+          "name": "Pranav Shyam"
+        }
+      ],
+      "primary_topic": {
+        "id": "https://openalex.org/T10028",
+        "display_name": "Topic Modeling",
+        "score": 0.9355000257492065
+      },
+      "topics": [
+        {
+          "id": "https://openalex.org/T10028",
+          "display_name": "Topic Modeling",
+          "score": 0.9355000257492065
+        },
+        {
+          "id": "https://openalex.org/T11307",
+          "display_name": "Domain Adaptation and Few-Shot Learning",
+          "score": 0.04179999977350235
+        },
+        {
+          "id": "https://openalex.org/T10181",
+          "display_name": "Natural Language Processing Techniques",
+          "score": 0.01860000006854534
+        }
+      ],
+      "cited_by_count": 23005,
+      "referenced_works_count": 127,
+      "is_external_reference": false,
+      "source": "openalex"
+    },
+    {
+      "id": "https://openalex.org/W3135367836",
+      "openalex_id": "https://openalex.org/W3135367836",
+      "title": "Learning Transferable Visual Models From Natural Language Supervision",
+      "publication_year": 2021,
+      "publication_date": "2021-02-26",
+      "type": "preprint",
+      "doi": "https://doi.org/10.48550/arxiv.2103.00020",
+      "arxiv_id": "2103.00020",
+      "landing_page_url": "http://arxiv.org/abs/2103.00020",
+      "open_access_url": "https://arxiv.org/pdf/2103.00020",
+      "authors": [
+        {
+          "id": "https://openalex.org/A5051250767",
+          "name": "Alec Radford"
+        },
+        {
+          "id": "https://openalex.org/A5100726106",
+          "name": "Jong Wook Kim"
+        },
+        {
+          "id": "https://openalex.org/A5007406730",
+          "name": "Chris Hallacy"
+        },
+        {
+          "id": null,
+          "name": "Ramesh, Aditya"
+        },
+        {
+          "id": "https://openalex.org/A5108118480",
+          "name": "Gabriel Goh"
+        },
+        {
+          "id": "https://openalex.org/A5057289323",
+          "name": "Sandhini Agarwal"
+        },
+        {
+          "id": "https://openalex.org/A5059260582",
+          "name": "Girish Sastry"
+        },
+        {
+          "id": "https://openalex.org/A5030305998",
+          "name": "Amanda Askell"
+        }
+      ],
+      "primary_topic": {
+        "id": "https://openalex.org/T11714",
+        "display_name": "Multimodal Machine Learning Applications",
+        "score": 0.9545999765396118
+      },
+      "topics": [
+        {
+          "id": "https://openalex.org/T11714",
+          "display_name": "Multimodal Machine Learning Applications",
+          "score": 0.9545999765396118
+        },
+        {
+          "id": "https://openalex.org/T11307",
+          "display_name": "Domain Adaptation and Few-Shot Learning",
+          "score": 0.041099999099969864
+        },
+        {
+          "id": "https://openalex.org/T10036",
+          "display_name": "Advanced Neural Network Applications",
+          "score": 0.0024999999441206455
+        }
+      ],
+      "cited_by_count": 15289,
+      "referenced_works_count": 193,
+      "is_external_reference": false,
+      "source": "openalex"
+    },
+    {
+      "id": "https://openalex.org/W3129576130",
+      "openalex_id": "https://openalex.org/W3129576130",
+      "title": "Zero-Shot Text-to-Image Generation",
+      "publication_year": 2021,
+      "publication_date": "2021-02-24",
+      "type": "preprint",
+      "doi": "https://doi.org/10.48550/arxiv.2102.12092",
+      "arxiv_id": "2102.12092",
+      "landing_page_url": "http://arxiv.org/abs/2102.12092",
+      "open_access_url": "https://arxiv.org/pdf/2102.12092",
+      "authors": [
+        {
+          "id": null,
+          "name": "Ramesh, Aditya"
+        },
+        {
+          "id": "https://openalex.org/A5070966194",
+          "name": "Mikhail Pavlov"
+        },
+        {
+          "id": "https://openalex.org/A5108118480",
+          "name": "Gabriel Goh"
+        },
+        {
+          "id": "https://openalex.org/A5026541761",
+          "name": "Scott Gray"
+        },
+        {
+          "id": "https://openalex.org/A5051743369",
+          "name": "Chelsea Voss"
+        },
+        {
+          "id": "https://openalex.org/A5051250767",
+          "name": "Alec Radford"
+        },
+        {
+          "id": "https://openalex.org/A5030935953",
+          "name": "Mark I-Cheng Chen"
+        },
+        {
+          "id": "https://openalex.org/A5006446297",
+          "name": "Ilya Sutskever"
+        }
+      ],
+      "primary_topic": {
+        "id": "https://openalex.org/T10775",
+        "display_name": "Generative Adversarial Networks and Image Synthesis",
+        "score": 0.9951000213623047
+      },
+      "topics": [
+        {
+          "id": "https://openalex.org/T10775",
+          "display_name": "Generative Adversarial Networks and Image Synthesis",
+          "score": 0.9951000213623047
+        },
+        {
+          "id": "https://openalex.org/T11714",
+          "display_name": "Multimodal Machine Learning Applications",
+          "score": 0.004699999932199717
+        },
+        {
+          "id": "https://openalex.org/T10036",
+          "display_name": "Advanced Neural Network Applications",
+          "score": 0.0
+        }
+      ],
+      "cited_by_count": 2416,
+      "referenced_works_count": 54,
+      "is_external_reference": false,
+      "source": "openalex"
+    },
+    {
+      "id": "https://openalex.org/W3168867926",
+      "openalex_id": "https://openalex.org/W3168867926",
+      "title": "LoRA: Low-Rank Adaptation of Large Language Models",
+      "publication_year": 2021,
+      "publication_date": "2021-06-17",
+      "type": "preprint",
+      "doi": "https://doi.org/10.48550/arxiv.2106.09685",
+      "arxiv_id": "2106.09685",
+      "landing_page_url": "http://arxiv.org/abs/2106.09685",
+      "open_access_url": "https://arxiv.org/pdf/2106.09685",
+      "authors": [
+        {
+          "id": "https://openalex.org/A5103230101",
+          "name": "J. Edward Hu"
+        },
+        {
+          "id": "https://openalex.org/A5101180037",
+          "name": "Yelong Shen"
+        },
+        {
+          "id": "https://openalex.org/A5058656827",
+          "name": "Phillip Wallis"
+        },
+        {
+          "id": "https://openalex.org/A5048981295",
+          "name": "Zeyuan Allen-Zhu"
+        },
+        {
+          "id": "https://openalex.org/A5101879892",
+          "name": "Yuanzhi Li"
+        },
+        {
+          "id": "https://openalex.org/A5047774607",
+          "name": "Shean Wang"
+        },
+        {
+          "id": null,
+          "name": "Wang, Lu"
+        },
+        {
+          "id": null,
+          "name": "Chen, Weizhu"
+        }
+      ],
+      "primary_topic": {
+        "id": "https://openalex.org/T10028",
+        "display_name": "Topic Modeling",
+        "score": 0.5145999789237976
+      },
+      "topics": [
+        {
+          "id": "https://openalex.org/T10028",
+          "display_name": "Topic Modeling",
+          "score": 0.5145999789237976
+        },
+        {
+          "id": "https://openalex.org/T11307",
+          "display_name": "Domain Adaptation and Few-Shot Learning",
+          "score": 0.45829999446868896
+        },
+        {
+          "id": "https://openalex.org/T10181",
+          "display_name": "Natural Language Processing Techniques",
+          "score": 0.013199999928474426
+        }
+      ],
+      "cited_by_count": 2502,
+      "referenced_works_count": 57,
+      "is_external_reference": false,
+      "source": "openalex"
+    },
+    {
+      "id": "https://openalex.org/W4226278401",
+      "openalex_id": "https://openalex.org/W4226278401",
+      "title": "Training language models to follow instructions with human feedback",
+      "publication_year": 2022,
+      "publication_date": "2022-03-04",
+      "type": "preprint",
+      "doi": "https://doi.org/10.48550/arxiv.2203.02155",
+      "arxiv_id": "2203.02155",
+      "landing_page_url": "http://arxiv.org/abs/2203.02155",
+      "open_access_url": "https://arxiv.org/pdf/2203.02155",
+      "authors": [
+        {
+          "id": "https://openalex.org/A5068949174",
+          "name": "Long Ouyang"
+        },
+        {
+          "id": "https://openalex.org/A5007570707",
+          "name": "Jeff Wu"
+        },
+        {
+          "id": "https://openalex.org/A5103934038",
+          "name": "Xu Jiang"
+        },
+        {
+          "id": "https://openalex.org/A5104285560",
+          "name": "Diogo Almeida"
+        },
+        {
+          "id": "https://openalex.org/A5022076965",
+          "name": "Carroll L. Wainwright"
+        },
+        {
+          "id": "https://openalex.org/A5028772381",
+          "name": "Pamela Mishkin"
+        },
+        {
+          "id": "https://openalex.org/A5100393899",
+          "name": "Chong Zhang"
+        },
+        {
+          "id": "https://openalex.org/A5057289323",
+          "name": "Sandhini Agarwal"
+        }
+      ],
+      "primary_topic": {
+        "id": "https://openalex.org/T11307",
+        "display_name": "Domain Adaptation and Few-Shot Learning",
+        "score": 0.3019999861717224
+      },
+      "topics": [
+        {
+          "id": "https://openalex.org/T11307",
+          "display_name": "Domain Adaptation and Few-Shot Learning",
+          "score": 0.3019999861717224
+        },
+        {
+          "id": "https://openalex.org/T10028",
+          "display_name": "Topic Modeling",
+          "score": 0.1517000049352646
+        },
+        {
+          "id": "https://openalex.org/T12072",
+          "display_name": "Machine Learning and Algorithms",
+          "score": 0.1476999968290329
+        }
+      ],
+      "cited_by_count": 4207,
+      "referenced_works_count": 0,
+      "is_external_reference": false,
+      "source": "openalex"
+    },
+    {
+      "id": "https://openalex.org/W4322718191",
+      "openalex_id": "https://openalex.org/W4322718191",
+      "title": "LLaMA: Open and Efficient Foundation Language Models",
+      "publication_year": 2023,
+      "publication_date": "2023-02-27",
+      "type": "preprint",
+      "doi": "https://doi.org/10.48550/arxiv.2302.13971",
+      "arxiv_id": "2302.13971",
+      "landing_page_url": "http://arxiv.org/abs/2302.13971",
+      "open_access_url": "https://arxiv.org/pdf/2302.13971",
+      "authors": [
+        {
+          "id": "https://openalex.org/A5032644449",
+          "name": "Hugo Touvron"
+        },
+        {
+          "id": "https://openalex.org/A5090457109",
+          "name": "Thibaut Lavril"
+        },
+        {
+          "id": "https://openalex.org/A5007815326",
+          "name": "Gautier Izacard"
+        },
+        {
+          "id": "https://openalex.org/A5033356379",
+          "name": "Xavier Martinet"
+        },
+        {
+          "id": "https://openalex.org/A5050998809",
+          "name": "Marie-Anne Lachaux"
+        },
+        {
+          "id": "https://openalex.org/A5084553837",
+          "name": "Timothée Lacroix"
+        },
+        {
+          "id": "https://openalex.org/A5048065823",
+          "name": "Baptiste Rozière"
+        },
+        {
+          "id": "https://openalex.org/A5075834790",
+          "name": "Naman Goyal"
+        }
+      ],
+      "primary_topic": {
+        "id": "https://openalex.org/T10028",
+        "display_name": "Topic Modeling",
+        "score": 0.8960000276565552
+      },
+      "topics": [
+        {
+          "id": "https://openalex.org/T10028",
+          "display_name": "Topic Modeling",
+          "score": 0.8960000276565552
+        },
+        {
+          "id": "https://openalex.org/T10181",
+          "display_name": "Natural Language Processing Techniques",
+          "score": 0.09459999948740005
+        },
+        {
+          "id": "https://openalex.org/T11714",
+          "display_name": "Multimodal Machine Learning Applications",
+          "score": 0.0019000000320374966
+        }
+      ],
+      "cited_by_count": 4528,
+      "referenced_works_count": 0,
+      "is_external_reference": false,
+      "source": "openalex"
+    },
+    {
+      "id": "https://openalex.org/W3094502228",
+      "openalex_id": "https://openalex.org/W3094502228",
+      "title": "An Image is Worth 16x16 Words: Transformers for Image Recognition at Scale",
+      "publication_year": 2020,
+      "publication_date": "2020-10-22",
+      "type": "preprint",
+      "doi": "https://doi.org/10.48550/arxiv.2010.11929",
+      "arxiv_id": "2010.11929",
+      "landing_page_url": "http://arxiv.org/abs/2010.11929",
+      "open_access_url": "https://arxiv.org/pdf/2010.11929",
+      "authors": [
+        {
+          "id": "https://openalex.org/A5090113830",
+          "name": "Alexey Dosovitskiy"
+        },
+        {
+          "id": "https://openalex.org/A5055629014",
+          "name": "Lucas Beyer"
+        },
+        {
+          "id": "https://openalex.org/A5000026575",
+          "name": "Alexander Kolesnikov"
+        },
+        {
+          "id": "https://openalex.org/A5038019602",
+          "name": "Dirk Weissenborn"
+        },
+        {
+          "id": "https://openalex.org/A5071668416",
+          "name": "Xiaohua Zhai"
+        },
+        {
+          "id": "https://openalex.org/A5083016682",
+          "name": "Thomas Unterthiner"
+        },
+        {
+          "id": "https://openalex.org/A5102906366",
+          "name": "Mostafa Dehghani"
+        },
+        {
+          "id": "https://openalex.org/A5088239541",
+          "name": "Matthias Minderer"
+        }
+      ],
+      "primary_topic": {
+        "id": "https://openalex.org/T10036",
+        "display_name": "Advanced Neural Network Applications",
+        "score": 0.9824000000953674
+      },
+      "topics": [
+        {
+          "id": "https://openalex.org/T10036",
+          "display_name": "Advanced Neural Network Applications",
+          "score": 0.9824000000953674
+        },
+        {
+          "id": "https://openalex.org/T11307",
+          "display_name": "Domain Adaptation and Few-Shot Learning",
+          "score": 0.011500000022351742
+        },
+        {
+          "id": "https://openalex.org/T11605",
+          "display_name": "Visual Attention and Saliency Detection",
+          "score": 0.0017999999690800905
+        }
+      ],
+      "cited_by_count": 21360,
+      "referenced_works_count": 52,
+      "is_external_reference": false,
+      "source": "openalex"
+    },
+    {
+      "id": "https://openalex.org/W3036167779",
+      "openalex_id": "https://openalex.org/W3036167779",
+      "title": "Denoising Diffusion Probabilistic Models",
+      "publication_year": 2020,
+      "publication_date": "2020-06-19",
+      "type": "preprint",
+      "doi": "https://doi.org/10.48550/arxiv.2006.11239",
+      "arxiv_id": "2006.11239",
+      "landing_page_url": "http://arxiv.org/abs/2006.11239",
+      "open_access_url": "https://arxiv.org/pdf/2006.11239",
+      "authors": [
+        {
+          "id": "https://openalex.org/A5053018827",
+          "name": "Jonathan Ho"
+        },
+        {
+          "id": null,
+          "name": "Jain, Ajay"
+        },
+        {
+          "id": "https://openalex.org/A5049349154",
+          "name": "Pieter Abbeel"
+        }
+      ],
+      "primary_topic": {
+        "id": "https://openalex.org/T10269",
+        "display_name": "Epigenetics and DNA Methylation",
+        "score": 0.9731000065803528
+      },
+      "topics": [
+        {
+          "id": "https://openalex.org/T10269",
+          "display_name": "Epigenetics and DNA Methylation",
+          "score": 0.9731000065803528
+        },
+        {
+          "id": "https://openalex.org/T10885",
+          "display_name": "Gene expression and cancer classification",
+          "score": 0.003000000026077032
+        },
+        {
+          "id": "https://openalex.org/T10222",
+          "display_name": "Genomics and Chromatin Dynamics",
+          "score": 0.002899999963119626
+        }
+      ],
+      "cited_by_count": 8716,
+      "referenced_works_count": 70,
+      "is_external_reference": false,
+      "source": "openalex"
+    },
+    {
+      "id": "https://openalex.org/W3027879771",
+      "openalex_id": "https://openalex.org/W3027879771",
+      "title": "Retrieval-Augmented Generation for Knowledge-Intensive NLP Tasks",
+      "publication_year": 2020,
+      "publication_date": "2020-05-22",
+      "type": "preprint",
+      "doi": "https://doi.org/10.48550/arxiv.2005.11401",
+      "arxiv_id": "2005.11401",
+      "landing_page_url": "http://arxiv.org/abs/2005.11401",
+      "open_access_url": "https://arxiv.org/pdf/2005.11401",
+      "authors": [
+        {
+          "id": "https://openalex.org/A5063377058",
+          "name": "Patrick Lewis"
+        },
+        {
+          "id": "https://openalex.org/A5091112967",
+          "name": "Ethan Perez"
+        },
+        {
+          "id": "https://openalex.org/A5055847471",
+          "name": "Aleksandra Piktus"
+        },
+        {
+          "id": "https://openalex.org/A5093091829",
+          "name": "Fabio Petroni"
+        },
+        {
+          "id": "https://openalex.org/A5032508066",
+          "name": "Vladimir Karpukhin"
+        },
+        {
+          "id": "https://openalex.org/A5075834790",
+          "name": "Naman Goyal"
+        },
+        {
+          "id": "https://openalex.org/A5004147468",
+          "name": "Heinrich Küttler"
+        },
+        {
+          "id": "https://openalex.org/A5004412943",
+          "name": "Mike Lewis"
+        }
+      ],
+      "primary_topic": {
+        "id": "https://openalex.org/T13295",
+        "display_name": "Safety Systems Engineering in Autonomy",
+        "score": 0.164900004863739
+      },
+      "topics": [
+        {
+          "id": "https://openalex.org/T13295",
+          "display_name": "Safety Systems Engineering in Autonomy",
+          "score": 0.164900004863739
+        },
+        {
+          "id": "https://openalex.org/T10883",
+          "display_name": "Ethics and Social Impacts of AI",
+          "score": 0.08259999752044678
+        },
+        {
+          "id": "https://openalex.org/T11689",
+          "display_name": "Adversarial Robustness in Machine Learning",
+          "score": 0.08070000261068344
+        }
+      ],
+      "cited_by_count": 3047,
+      "referenced_works_count": 59,
+      "is_external_reference": false,
+      "source": "openalex"
+    }
+  ],
+  "edges": [
+    {
+      "source": "https://openalex.org/W2896457183",
+      "target": "https://openalex.org/W2626778328",
+      "relation": "cites",
+      "source_field": "referenced_works",
+      "source_system": "openalex"
+    },
+    {
+      "source": "https://openalex.org/W3030163527",
+      "target": "https://openalex.org/W2626778328",
+      "relation": "cites",
+      "source_field": "referenced_works",
+      "source_system": "openalex"
+    },
+    {
+      "source": "https://openalex.org/W3030163527",
+      "target": "https://openalex.org/W3027879771",
+      "relation": "cites",
+      "source_field": "referenced_works",
+      "source_system": "openalex"
+    },
+    {
+      "source": "https://openalex.org/W3135367836",
+      "target": "https://openalex.org/W2626778328",
+      "relation": "cites",
+      "source_field": "referenced_works",
+      "source_system": "openalex"
+    },
+    {
+      "source": "https://openalex.org/W3135367836",
+      "target": "https://openalex.org/W3030163527",
+      "relation": "cites",
+      "source_field": "referenced_works",
+      "source_system": "openalex"
+    },
+    {
+      "source": "https://openalex.org/W3135367836",
+      "target": "https://openalex.org/W3094502228",
+      "relation": "cites",
+      "source_field": "referenced_works",
+      "source_system": "openalex"
+    },
+    {
+      "source": "https://openalex.org/W3129576130",
+      "target": "https://openalex.org/W2626778328",
+      "relation": "cites",
+      "source_field": "referenced_works",
+      "source_system": "openalex"
+    },
+    {
+      "source": "https://openalex.org/W3129576130",
+      "target": "https://openalex.org/W3135367836",
+      "relation": "cites",
+      "source_field": "referenced_works",
+      "source_system": "openalex"
+    },
+    {
+      "source": "https://openalex.org/W3168867926",
+      "target": "https://openalex.org/W2626778328",
+      "relation": "cites",
+      "source_field": "referenced_works",
+      "source_system": "openalex"
+    },
+    {
+      "source": "https://openalex.org/W3168867926",
+      "target": "https://openalex.org/W3030163527",
+      "relation": "cites",
+      "source_field": "referenced_works",
+      "source_system": "openalex"
+    },
+    {
+      "source": "https://openalex.org/W3094502228",
+      "target": "https://openalex.org/W2626778328",
+      "relation": "cites",
+      "source_field": "referenced_works",
+      "source_system": "openalex"
+    },
+    {
+      "source": "https://openalex.org/W3094502228",
+      "target": "https://openalex.org/W3030163527",
+      "relation": "cites",
+      "source_field": "referenced_works",
+      "source_system": "openalex"
+    },
+    {
+      "source": "https://openalex.org/W3036167779",
+      "target": "https://openalex.org/W2626778328",
+      "relation": "cites",
+      "source_field": "referenced_works",
+      "source_system": "openalex"
+    },
+    {
+      "source": "https://openalex.org/W3027879771",
+      "target": "https://openalex.org/W2626778328",
+      "relation": "cites",
+      "source_field": "referenced_works",
+      "source_system": "openalex"
+    }
+  ],
+  "query": {
+    "seed_arxiv": [
+      "1706.03762",
+      "1810.04805",
+      "2005.14165",
+      "2103.00020",
+      "2102.12092",
+      "2106.09685",
+      "2203.02155",
+      "2302.13971",
+      "2010.11929",
+      "2006.11239",
+      "2005.11401"
+    ]
+  }
+}

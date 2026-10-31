@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#080c16" />
+    <title>AI Research Graph</title>
+    <link rel="stylesheet" href="styles.css" />
+    <script src="https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js"></script>
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="topbar">
+        <div class="brand-lockup">
+          <div class="brand-mark" aria-hidden="true"><span></span><span></span><span></span></div>
+          <div>
+            <p class="eyebrow">AI RESEARCH INFRASTRUCTURE</p>
+            <h1>AI Research Graph</h1>
+          </div>
+        </div>
+        <div class="topbar-actions">
+          <div class="sync-status"><span class="status-dot"></span><span id="syncStatus">数据快照已加载</span></div>
+          <button class="ghost-button" id="resetView" type="button">重置视图</button>
+        </div>
+      </header>
+
+      <main class="workspace">
+        <aside class="sidebar panel">
+          <div class="panel-heading">
+            <div>
+              <p class="section-kicker">探索</p>
+              <h2>论文与关系</h2>
+            </div>
+            <span class="count-badge" id="resultCount">0</span>
+          </div>
+
+          <label class="search-box" for="searchInput">
+            <span class="search-icon" aria-hidden="true">⌕</span>
+            <input id="searchInput" type="search" placeholder="搜索标题、作者、主题" autocomplete="off" />
+            <kbd>/</kbd>
+          </label>
+
+          <div class="filter-group">
+            <div class="filter-label-row"><span>发表年份</span><span id="yearValue">2016 — 2026</span></div>
+            <div class="range-wrap">
+              <input id="yearMin" type="range" min="2016" max="2026" value="2016" />
+              <input id="yearMax" type="range" min="2016" max="2026" value="2026" />
+            </div>
+          </div>
+
+          <div class="filter-group">
+            <div class="filter-label-row"><span>研究主题</span><button class="text-button" id="clearTopics" type="button">清除</button></div>
+            <div class="topic-list" id="topicList"></div>
+          </div>
+
+          <div class="filter-group compact-group">
+            <div class="filter-label-row"><span>图谱范围</span></div>
+            <label class="toggle-row"><input id="showExternal" type="checkbox" checked /><span class="toggle"></span><span>显示外部引用节点</span></label>
+            <label class="toggle-row"><input id="showLabels" type="checkbox" checked /><span class="toggle"></span><span>显示论文标签</span></label>
+          </div>
+
+          <div class="sidebar-footer">
+            <div class="mini-stat"><strong id="paperStat">0</strong><span>论文节点</span></div>
+            <div class="mini-stat"><strong id="edgeStat">0</strong><span>引用关系</span></div>
+            <div class="mini-stat"><strong id="topicStat">0</strong><span>主题</span></div>
+          </div>
+        </aside>
+
+        <section class="graph-column">
+          <div class="graph-toolbar">
+            <div class="toolbar-copy">
+              <p class="section-kicker">引用网络 · 有向图</p>
+              <h2>研究演化地图</h2>
+              <p>沿着真实引用边，观察方法如何从基础论文扩散到后续研究。</p>
+            </div>
+            <div class="toolbar-actions">
+              <button class="icon-button" id="zoomOut" type="button" aria-label="缩小">−</button>
+              <button class="icon-button" id="zoomIn" type="button" aria-label="放大">+</button>
+              <button class="icon-button" id="fitGraph" type="button" aria-label="适应窗口">⌗</button>
+            </div>
+          </div>
+          <div class="graph-panel panel" id="graphPanel">
+            <div class="graph-hint"><span class="hint-key">拖动</span>节点移动 · <span class="hint-key">滚轮</span>缩放 · 点击节点查看详情</div>
+            <svg id="graph" role="img" aria-label="AI 论文引用关系图"></svg>
+            <div class="empty-state" id="emptyState" hidden>
+              <div class="empty-icon">∅</div>
+              <h3>没有匹配的论文</h3>
+              <p>尝试放宽年份范围或清除主题筛选。</p>
+            </div>
+            <div class="graph-legend">
+              <div class="legend-item"><span class="legend-line"></span><span>引用方向</span></div>
+              <div class="legend-item"><span class="legend-node core"></span><span>核心论文</span></div>
+              <div class="legend-item"><span class="legend-node external"></span><span>外部基础节点</span></div>
+            </div>
+          </div>
+        </section>
+
+        <aside class="details-panel panel" id="detailsPanel">
+          <div class="details-empty" id="detailsEmpty">
+            <div class="details-orbit"><span></span><span></span><span></span></div>
+            <p class="section-kicker">论文详情</p>
+            <h2>选择一个节点</h2>
+            <p>点击图中的论文，查看元数据、引用关系和研究主题。</p>
+          </div>
+          <div class="details-content" id="detailsContent" hidden>
+            <div class="detail-topline"><span class="paper-year" id="detailYear"></span><span class="paper-type" id="detailType">PAPER</span></div>
+            <h2 id="detailTitle"></h2>
+            <p class="detail-venue" id="detailVenue"></p>
+            <div class="detail-authors" id="detailAuthors"></div>
+            <p class="detail-provenance" id="detailProvenance"></p>
+            <div class="detail-tags" id="detailTags"></div>
+            <div class="detail-rule"></div>
+            <p class="detail-abstract" id="detailAbstract"></p>
+            <div class="relation-summary">
+              <div><span>引用</span><strong id="detailReferences">0</strong></div>
+              <div><span>被引</span><strong id="detailCitations">0</strong></div>
+              <div><span>图中连接</span><strong id="detailConnections">0</strong></div>
+            </div>
+            <div class="related-section">
+              <div class="related-heading"><span>相邻论文</span><span class="related-count" id="relatedCount">0</span></div>
+              <div class="related-list" id="relatedList"></div>
+            </div>
+            <a class="source-link" id="detailLink" href="#" target="_blank" rel="noreferrer">打开论文来源 <span>↗</span></a>
+          </div>
+        </aside>
+      </main>
+
+      <footer class="footer-bar">
+        <div><span class="footer-pulse"></span><span>当前视图：</span><strong id="viewSummary">全部论文</strong></div>
+        <div class="footer-note">引用关系来自 OpenAlex 快照 · 当前为可复现样本，目标窗口 2016–2026</div>
+      </footer>
+    </div>
+    <script src="app.js"></script>
+  </body>
+</html>

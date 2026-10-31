@@ -1,0 +1,254 @@
+/* AI Research Graph static prototype. Replace data.sample.json with the
+ * output of the ingestion pipeline; the graph schema is intentionally small. */
+
+const FALLBACK_DATA = {
+  nodes: [
+    { id: "fallback-1", title: "Attention Is All You Need", year: 2017, venue: "NeurIPS", authors: ["Ashish Vaswani", "Noam Shazeer"], topics: ["NLP", "Architecture"], abstract: "A compact fallback graph is shown when the data snapshot cannot be loaded.", url: "https://arxiv.org/abs/1706.03762" },
+    { id: "fallback-2", title: "BERT: Pre-training of Deep Bidirectional Transformers", year: 2018, venue: "NAACL", authors: ["Jacob Devlin", "Ming-Wei Chang"], topics: ["NLP", "Pretraining"], abstract: "The sample data file can be replaced with real OpenAlex records.", url: "https://arxiv.org/abs/1810.04805" }
+  ],
+  edges: [{ source: "fallback-2", target: "fallback-1", kind: "citation" }]
+};
+
+const state = {
+  data: { nodes: [], edges: [] },
+  snapshot: null,
+  filteredNodes: [],
+  filteredEdges: [],
+  selectedId: null,
+  activeTopics: new Set(),
+  yearMin: 2016,
+  yearMax: 2026,
+  showExternal: true,
+  showLabels: true,
+  search: "",
+  zoom: null,
+  simulation: null,
+  renderNodes: [],
+  width: 0,
+  height: 0
+};
+
+const $ = (id) => document.getElementById(id);
+const svg = d3.select("#graph");
+const graphPanel = $("graphPanel");
+const linkLayer = svg.append("g").attr("class", "links");
+const nodeLayer = svg.append("g").attr("class", "nodes");
+const labelLayer = svg.append("g").attr("class", "labels");
+
+function normalizeData(raw) {
+  const normalizeAuthors = (authors) => (authors || []).map((author) => {
+    if (typeof author === "string") return author;
+    return author?.name || author?.author?.display_name || author?.display_name || "";
+  }).filter(Boolean);
+  const normalizeTopics = (topics) => (topics || []).map((topic) => {
+    if (typeof topic === "string") return topic;
+    return topic?.display_name || topic?.name || "";
+  }).filter(Boolean);
+  const nodes = (raw.nodes || []).map((node) => ({
+    ...node,
+    id: String(node.id),
+    year: Number(node.year ?? node.publication_year) || 2016,
+    title: node.title || "Untitled paper",
+    venue: node.venue || node.primary_topic?.display_name || node.source || "OpenAlex",
+    topics: normalizeTopics(node.topics),
+    authors: normalizeAuthors(node.authors),
+    abstract: node.abstract || "",
+    citations_count: Number(node.citations_count ?? node.cited_by_count ?? 0),
+    url: node.url || node.open_access_url || node.landing_page_url || node.doi || (node.openalex_id ? `https://openalex.org/${String(node.openalex_id).split("/").pop()}` : ""),
+    external: Boolean(node.external ?? node.is_external_reference)
+  }));
+  const known = new Set(nodes.map((node) => node.id));
+  const edges = (raw.edges || []).map((edge) => ({ ...edge, source: String(edge.source), target: String(edge.target) })).filter((edge) => known.has(edge.source) && known.has(edge.target));
+  return { nodes, edges };
+}
+
+async function loadData() {
+  try {
+    const response = await fetch("data.sample.json", { cache: "no-store" });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const raw = await response.json();
+    state.snapshot = raw;
+    state.data = normalizeData(raw);
+    const nodeCount = raw.stats?.nodes ?? state.data.nodes.length;
+    const edgeCount = raw.stats?.edges ?? state.data.edges.length;
+    $("syncStatus").textContent = `${raw.provenance?.provider || "OpenAlex"} · ${nodeCount} 节点 / ${edgeCount} 条边`;
+  } catch (error) {
+    state.snapshot = null;
+    state.data = normalizeData(FALLBACK_DATA);
+    $("syncStatus").textContent = "使用内置演示数据";
+  }
+  const years = state.data.nodes.map((node) => node.year);
+  // Keep the default research window at the requested ten-year horizon.
+  // The slider may still expose older external foundation nodes when present.
+  state.yearMin = 2016;
+  state.yearMax = Math.max(2026, ...years);
+  setupFilters();
+  applyFilters();
+}
+
+function setupFilters() {
+  const topics = [...new Set(state.data.nodes.flatMap((node) => node.topics))].sort();
+  $("topicList").innerHTML = topics.map((topic) => `<button type="button" class="topic-chip" data-topic="${escapeHtml(topic)}">${escapeHtml(topic)}</button>`).join("");
+  $("topicStat").textContent = topics.length;
+  $("yearMin").min = String(state.yearMin); $("yearMin").max = String(state.yearMax); $("yearMin").value = String(state.yearMin);
+  $("yearMax").min = String(state.yearMin); $("yearMax").max = String(state.yearMax); $("yearMax").value = String(state.yearMax);
+  $("yearMin").addEventListener("input", handleYearInput);
+  $("yearMax").addEventListener("input", handleYearInput);
+  $("searchInput").addEventListener("input", (event) => { state.search = event.target.value.trim().toLowerCase(); applyFilters(); });
+  $("showExternal").addEventListener("change", (event) => { state.showExternal = event.target.checked; applyFilters(); });
+  $("showLabels").addEventListener("change", (event) => { state.showLabels = event.target.checked; labelLayer.style("display", state.showLabels ? null : "none"); });
+  $("clearTopics").addEventListener("click", () => { state.activeTopics.clear(); document.querySelectorAll(".topic-chip").forEach((chip) => chip.classList.remove("active")); applyFilters(); });
+  document.querySelectorAll(".topic-chip").forEach((chip) => chip.addEventListener("click", () => {
+    const topic = chip.dataset.topic;
+    if (state.activeTopics.has(topic)) { state.activeTopics.delete(topic); chip.classList.remove("active"); }
+    else { state.activeTopics.add(topic); chip.classList.add("active"); }
+    applyFilters();
+  }));
+  $("resetView").addEventListener("click", resetView);
+  $("zoomIn").addEventListener("click", () => svg.transition().call(state.zoom.scaleBy, 1.25));
+  $("zoomOut").addEventListener("click", () => svg.transition().call(state.zoom.scaleBy, .8));
+  $("fitGraph").addEventListener("click", fitGraph);
+  window.addEventListener("keydown", (event) => { if (event.key === "/" && document.activeElement !== $("searchInput")) { event.preventDefault(); $("searchInput").focus(); } });
+}
+
+function handleYearInput() {
+  let min = Number($("yearMin").value), max = Number($("yearMax").value);
+  if (min > max) [min, max] = [max, min];
+  state.yearMin = min; state.yearMax = max;
+  $("yearValue").textContent = `${min} — ${max}`;
+  applyFilters();
+}
+
+function applyFilters() {
+  const visibleIds = new Set(state.data.nodes.filter((node) => {
+    const haystack = [node.title, node.venue, ...(node.authors || []), ...(node.topics || [])].join(" ").toLowerCase();
+    const matchesSearch = !state.search || haystack.includes(state.search);
+    // External foundation nodes can sit outside the time window but remain
+    // visible when their cited edge is part of the current graph.
+    const matchesYear = node.external || (node.year >= state.yearMin && node.year <= state.yearMax);
+    const matchesTopic = !state.activeTopics.size || [...state.activeTopics].every((topic) => node.topics.includes(topic));
+    return matchesSearch && matchesYear && matchesTopic && (state.showExternal || !node.external);
+  }).map((node) => node.id));
+  // Keep the visual layer bounded for large snapshots while preserving the
+  // full dataset for the eventual API and ingestion pipeline.
+  let filteredNodes = state.data.nodes.filter((node) => visibleIds.has(node.id));
+  if (filteredNodes.length > 200) {
+    const ranked = [...filteredNodes].sort((a, b) => (b.citations_count || 0) - (a.citations_count || 0));
+    filteredNodes = ranked.slice(0, 200);
+  }
+  const finalIds = new Set(filteredNodes.map((node) => node.id));
+  const filteredEdges = state.data.edges.filter((edge) => finalIds.has(edge.source) && finalIds.has(edge.target));
+  state.filteredNodes = filteredNodes; state.filteredEdges = filteredEdges;
+  if (state.selectedId && !finalIds.has(state.selectedId)) state.selectedId = null;
+  const inWindowCount = filteredNodes.filter((node) => !node.external).length;
+  $("resultCount").textContent = inWindowCount;
+  $("paperStat").textContent = filteredNodes.length;
+  $("edgeStat").textContent = filteredEdges.length;
+  $("emptyState").hidden = filteredNodes.length > 0;
+  $("viewSummary").textContent = state.search || state.activeTopics.size ? `${filteredNodes.length} 个匹配节点` : "全部论文";
+  renderGraph();
+  renderDetails(state.selectedId ? state.data.nodes.find((node) => node.id === state.selectedId) : null);
+}
+
+function renderGraph() {
+  const rect = graphPanel.getBoundingClientRect();
+  state.width = Math.max(400, rect.width); state.height = Math.max(560, rect.height);
+  svg.attr("viewBox", `0 0 ${state.width} ${state.height}`);
+  const nodes = state.filteredNodes.map((node) => ({ ...node }));
+  state.renderNodes = nodes;
+  const nodeMap = new Map(nodes.map((node) => [node.id, node]));
+  const edges = state.filteredEdges.map((edge) => ({ ...edge, source: nodeMap.get(edge.source), target: nodeMap.get(edge.target) }));
+  const linkSelection = linkLayer.selectAll("line").data(edges, (edge) => `${edge.source.id}-${edge.target.id}`);
+  linkSelection.exit().transition().duration(120).style("opacity", 0).remove();
+  const linkEnter = linkSelection.enter().append("line").attr("class", "link");
+  const links = linkEnter.merge(linkSelection);
+  const nodeSelection = nodeLayer.selectAll("g.node").data(nodes, (node) => node.id);
+  nodeSelection.exit().transition().duration(120).style("opacity", 0).remove();
+  const nodeEnter = nodeSelection.enter().append("g").attr("class", "node").call(d3.drag().on("start", dragStart).on("drag", dragged).on("end", dragEnd));
+  nodeEnter.append("circle").attr("class", "node-circle").attr("r", (node) => node.external ? 4 : Math.min(10, 5 + ((node.citations_count || 0) / 30))).on("click", (event, node) => { event.stopPropagation(); selectNode(node.id); });
+  const mergedNodes = nodeEnter.merge(nodeSelection);
+  mergedNodes.select("circle").attr("class", (node) => `node-circle ${node.external ? "external" : `core topic-${topicIndex(node)}`}${state.selectedId === node.id ? " selected" : ""}`);
+  const labelSelection = labelLayer.selectAll("text").data(nodes, (node) => node.id);
+  labelSelection.exit().remove();
+  labelSelection.enter().append("text").attr("class", "node-label").merge(labelSelection).text((node) => shortTitle(node.title)).classed("active", (node) => state.selectedId === node.id);
+  svg.on("click", () => { state.selectedId = null; renderGraph(); renderDetails(null); });
+  if (state.simulation) state.simulation.stop();
+  state.simulation = d3.forceSimulation(nodes).force("link", d3.forceLink(edges).id((node) => node.id).distance((edge) => edge.source.external || edge.target.external ? 110 : 88).strength(.55)).force("charge", d3.forceManyBody().strength((node) => node.external ? -70 : -150)).force("center", d3.forceCenter(state.width / 2, state.height / 2)).force("collide", d3.forceCollide().radius((node) => node.external ? 10 : 15)).on("tick", () => {
+    links.attr("x1", (edge) => edge.source.x).attr("y1", (edge) => edge.source.y).attr("x2", (edge) => edge.target.x).attr("y2", (edge) => edge.target.y);
+    mergedNodes.attr("transform", (node) => `translate(${node.x},${node.y})`);
+    labelLayer.selectAll("text").attr("x", (node) => node.x + (node.external ? 7 : 10)).attr("y", (node) => node.y + 3);
+  });
+  applyHighlight();
+  if (state.filteredNodes.length) setTimeout(fitGraph, 280);
+}
+
+function ensureArrow() {
+  if (!svg.select("defs").node()) svg.append("defs");
+  if (!svg.select("#arrow").node()) svg.select("defs").append("marker").attr("id", "arrow").attr("viewBox", "0 -4 8 8").attr("refX", 8).attr("refY", 0).attr("markerWidth", 5).attr("markerHeight", 5).attr("orient", "auto").append("path").attr("d", "M0,-4L8,0L0,4").attr("fill", "rgba(123,226,255,.72)");
+}
+
+function selectNode(id) {
+  state.selectedId = id;
+  const node = state.data.nodes.find((item) => item.id === id);
+  renderGraph();
+  renderDetails(node);
+}
+
+function applyHighlight() {
+  const selected = state.selectedId;
+  if (!selected) { linkLayer.selectAll("line").classed("highlighted", false).classed("link-dim", false); nodeLayer.selectAll("circle").classed("node-dim", false); labelLayer.selectAll("text").classed("active", false); return; }
+  const connected = new Set([selected]);
+  state.filteredEdges.forEach((edge) => { if (edge.source === selected) connected.add(edge.target); if (edge.target === selected) connected.add(edge.source); });
+  linkLayer.selectAll("line").data(state.filteredEdges, (edge) => `${edge.source}-${edge.target}`).classed("highlighted", (edge) => edge.source === selected || edge.target === selected).classed("link-dim", (edge) => edge.source !== selected && edge.target !== selected);
+  nodeLayer.selectAll("g.node").classed("node-dim", (node) => !connected.has(node.id));
+  labelLayer.selectAll("text").classed("active", (node) => node.id === selected);
+}
+
+function renderDetails(node) {
+  if (!node) { $("detailsEmpty").hidden = false; $("detailsContent").hidden = true; return; }
+  $("detailsEmpty").hidden = true; $("detailsContent").hidden = false;
+  $("detailYear").textContent = node.year;
+  $("detailTitle").textContent = node.title;
+  $("detailVenue").textContent = [node.venue, node.external ? "外部引用节点" : "收录论文"].filter(Boolean).join(" · ");
+  $("detailAuthors").textContent = (node.authors || []).join(" · ") || "作者信息待补充";
+  $("detailProvenance").textContent = `来源 · ${node.source || "OpenAlex / arXiv 公共元数据快照"}`;
+  $("detailTags").innerHTML = (node.topics || []).map((topic) => `<span class="detail-tag">${escapeHtml(topic)}</span>`).join("");
+  $("detailAbstract").textContent = node.abstract || "暂无摘要。后续数据同步会补充论文摘要和来源信息。";
+  const incoming = state.data.edges.filter((edge) => edge.target === node.id);
+  const outgoing = state.data.edges.filter((edge) => edge.source === node.id);
+  $("detailReferences").textContent = outgoing.length;
+  $("detailCitations").textContent = incoming.length;
+  $("detailConnections").textContent = incoming.length + outgoing.length;
+  const relatedIds = [...new Set([...incoming.map((edge) => ({ id: edge.source, type: "incoming" })), ...outgoing.map((edge) => ({ id: edge.target, type: "outgoing" }))].map((item) => JSON.stringify(item)))].map((item) => JSON.parse(item));
+  $("relatedCount").textContent = relatedIds.length;
+  $("relatedList").innerHTML = relatedIds.slice(0, 7).map((item) => {
+    const related = state.data.nodes.find((candidate) => candidate.id === item.id); if (!related) return "";
+    return `<div class="related-item" data-related="${escapeHtml(related.id)}"><span class="related-dot ${item.type === "incoming" ? "incoming" : ""}"></span><span class="related-copy"><span class="related-title">${escapeHtml(related.title)}</span><span class="related-meta">${item.type === "incoming" ? "引用此论文" : "此论文引用"} · ${related.year}</span></span></div>`;
+  }).join("");
+  $("relatedList").querySelectorAll(".related-item").forEach((item) => item.addEventListener("click", () => selectNode(item.dataset.related)));
+  const link = $("detailLink"); link.href = node.url || `https://openalex.org/${encodeURIComponent(node.id)}`;
+}
+
+function fitGraph() {
+  if (!state.zoom || !state.filteredNodes.length) return;
+  const xs = state.renderNodes.map((node) => node.x).filter(Number.isFinite), ys = state.renderNodes.map((node) => node.y).filter(Number.isFinite);
+  if (!xs.length || !ys.length) return;
+  const minX = Math.min(...xs) - 55, maxX = Math.max(...xs) + 55, minY = Math.min(...ys) - 55, maxY = Math.max(...ys) + 55;
+  const scale = Math.min(.95, Math.max(.48, Math.min(state.width / (maxX - minX), state.height / (maxY - minY))));
+  const tx = state.width / 2 - scale * (minX + maxX) / 2, ty = state.height / 2 - scale * (minY + maxY) / 2;
+  svg.transition().duration(450).call(state.zoom.transform, d3.zoomIdentity.translate(tx, ty).scale(scale));
+}
+
+function resetView() { state.selectedId = null; state.search = ""; $("searchInput").value = ""; state.activeTopics.clear(); document.querySelectorAll(".topic-chip").forEach((chip) => chip.classList.remove("active")); $("showExternal").checked = true; state.showExternal = true; $("yearMin").value = state.yearMin; $("yearMax").value = state.yearMax; applyFilters(); }
+function topicIndex(node) { const topic = (node.topics || [])[0] || ""; return Math.abs(hash(topic)) % 4; }
+function hash(text) { return [...String(text)].reduce((sum, char) => ((sum << 5) - sum + char.charCodeAt(0)) | 0, 0); }
+function shortTitle(title) { return title.length > 26 ? `${title.slice(0, 25)}…` : title; }
+function escapeHtml(value) { return String(value).replace(/[&<>'"]/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;" }[char])); }
+function dragStart(event, node) { if (!event.active) state.simulation.alphaTarget(.3).restart(); node.fx = node.x; node.fy = node.y; }
+function dragged(event, node) { node.fx = event.x; node.fy = event.y; }
+function dragEnd(event, node) { if (!event.active) state.simulation.alphaTarget(0); node.fx = null; node.fy = null; }
+
+state.zoom = d3.zoom().scaleExtent([.35, 3]).on("zoom", (event) => { linkLayer.attr("transform", event.transform); nodeLayer.attr("transform", event.transform); labelLayer.attr("transform", event.transform); });
+svg.call(state.zoom);
+ensureArrow();
+loadData();
