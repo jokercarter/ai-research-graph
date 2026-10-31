@@ -31,7 +31,7 @@
               <p class="section-kicker">探索</p>
               <h2>论文与关系</h2>
             </div>
-            <span class="count-badge" id="resultCount">0</span>
+            <span class="count-badge" id="resultCount" title="当前筛选匹配的收录论文数量">0</span>
           </div>
 
           <div class="dataset-card" aria-live="polite">
@@ -53,8 +53,8 @@
           <div class="filter-group">
             <div class="filter-label-row"><span>发表年份</span><span id="yearValue">2016 — 2026</span></div>
             <div class="range-wrap">
-              <input id="yearMin" type="range" min="2016" max="2026" value="2016" />
-              <input id="yearMax" type="range" min="2016" max="2026" value="2026" />
+              <input id="yearMin" type="range" min="2016" max="2026" value="2016" aria-label="起始发表年份" />
+              <input id="yearMax" type="range" min="2016" max="2026" value="2026" aria-label="结束发表年份" />
             </div>
           </div>
 
@@ -84,7 +84,7 @@
               <p>沿着真实引用边，观察方法如何从基础论文扩散到后续研究。</p>
             </div>
             <div class="toolbar-actions">
-              <span class="canvas-coverage" id="canvasCoverage">画布 0 / 200</span>
+              <span class="canvas-coverage" id="canvasCoverage" aria-live="polite">渲染 0 / 全量 0 · 上限 200</span>
               <button class="ghost-button neighborhood-toggle" id="neighborhoodToggle" type="button" hidden>退出邻域</button>
               <button class="icon-button" id="zoomOut" type="button" aria-label="缩小">−</button>
               <button class="icon-button" id="zoomIn" type="button" aria-label="放大">+</button>
@@ -95,17 +95,17 @@
             <div class="loading-state" id="loadingState" role="status">
               <span class="loading-spinner" aria-hidden="true"></span>
               <strong>正在加载论文引用图…</strong>
-              <span>完整数据保留在快照中，画布最多渲染 200 个节点</span>
+              <span>完整引用网络保留在快照中，画布最多渲染 200 个节点</span>
             </div>
-            <div class="graph-hint"><span class="hint-key">拖动</span>节点移动 · <span class="hint-key">滚轮</span>缩放 · 点击节点查看详情</div>
-            <svg id="graph" role="img" aria-label="AI 论文引用关系图"></svg>
+            <div class="graph-hint"><span class="hint-key">拖动</span>节点移动 · <span class="hint-key">滚轮</span>缩放 · 点击节点查看详情 · 箭头表示引用者 → 被引论文</div>
+            <svg id="graph" role="img" aria-label="AI 论文引用关系子图；完整网络统计见左侧；画布最多渲染 200 个节点"></svg>
             <div class="empty-state" id="emptyState" hidden>
               <div class="empty-icon">∅</div>
               <h3>没有匹配的论文</h3>
               <p>尝试放宽年份范围或清除主题筛选。</p>
             </div>
             <div class="graph-legend">
-              <div class="legend-item"><span class="legend-line"></span><span>引用方向</span></div>
+              <div class="legend-item"><span class="legend-line"></span><span>引用者 → 被引论文</span></div>
               <div class="legend-item"><span class="legend-node core"></span><span>核心论文</span></div>
               <div class="legend-item"><span class="legend-node external"></span><span>外部基础节点</span></div>
             </div>
@@ -145,7 +145,7 @@
 
       <footer class="footer-bar">
         <div><span class="footer-pulse"></span><span>当前视图：</span><strong id="viewSummary">全部论文</strong></div>
-        <div class="footer-note">引用关系来自 OpenAlex 递归快照 · 目标窗口 2016–2026</div>
+        <div class="footer-note">引用关系来自 OpenAlex 递归与 CS 目录快照 · 目标窗口 2016–2026</div>
       </footer>
     </div>
     <script src="app.js"></script>

@@ -98,7 +98,14 @@ function datasetStats(raw, data) {
     edges: Number(stats.edges ?? stats.citations ?? stats.total_edges ?? data.edges.length) || data.edges.length,
     topics: Number(stats.topics ?? stats.topic_count ?? stats.total_topics ?? topicCount) || topicCount,
     provider: raw?.provenance?.provider || "OpenAlex",
-    generatedAt: raw?.provenance?.generated_at || raw?.generated_at || ""
+    generatedAt: raw?.provenance?.generated_at || raw?.generated_at || "",
+    coverage: raw?.coverage
+      ? {
+          catalogExpectedCount: Number(raw.coverage.catalog_expected_count) || 0,
+          catalogSampleCount: Number(raw.coverage.catalog_sample_count) || 0,
+          catalogSampleFraction: Number(raw.coverage.catalog_sample_fraction) || 0
+        }
+      : null
   };
 }
 
@@ -108,7 +115,11 @@ function updateDatasetStats() {
   $("datasetTopics").textContent = formatCount(state.stats.topics);
   $("datasetSource").textContent = state.stats.provider || "快照";
   const timestamp = state.stats.generatedAt ? ` · ${state.stats.generatedAt}` : "";
-  $("datasetNote").textContent = `完整快照${timestamp}；画布最多渲染 200 个节点，可用搜索或一跳邻域查看局部关系。`;
+  const coverage = state.stats.coverage;
+  const coverageNote = coverage?.catalogExpectedCount
+    ? `；CS 年度目录样本 ${formatCount(coverage.catalogSampleCount)} / ${formatCount(coverage.catalogExpectedCount)}（${(coverage.catalogSampleFraction * 100).toFixed(4)}%）`
+    : "";
+  $("datasetNote").textContent = `完整快照 ${formatCount(state.stats.nodes)} 节点 / ${formatCount(state.stats.edges)} 边${timestamp}${coverageNote}；这是可追溯的有限样本，画布是受限子图，最多渲染 200 个节点，可用搜索或一跳邻域查看局部关系。`;
 }
 
 function formatCount(value) {
@@ -121,8 +132,8 @@ function setupFilters() {
   // OpenAlex can return many long-tail topic labels. Keep the control rail
   // usable while retaining every topic in search and the paper inspector.
   const topics = [...topicCounts.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).slice(0, 18).map(([topic]) => topic);
-  $("topicList").innerHTML = topics.map((topic) => `<button type="button" class="topic-chip" data-topic="${escapeHtml(topic)}">${escapeHtml(topic)}</button>`).join("");
-  $("topicStat").textContent = topics.length;
+  $("topicList").innerHTML = topics.map((topic) => `<button type="button" class="topic-chip" aria-pressed="false" data-topic="${escapeHtml(topic)}">${escapeHtml(topic)}</button>`).join("");
+  $("topicStat").textContent = formatCount(state.stats.topics || topics.length);
   $("yearMin").min = String(state.yearMin); $("yearMin").max = String(state.yearMax); $("yearMin").value = String(state.yearMin);
   $("yearMax").min = String(state.yearMin); $("yearMax").max = String(state.yearMax); $("yearMax").value = String(state.yearMax);
   $("yearMin").addEventListener("input", handleYearInput);
@@ -130,11 +141,11 @@ function setupFilters() {
   $("searchInput").addEventListener("input", (event) => { state.search = event.target.value.trim().toLowerCase(); applyFilters(); });
   $("showExternal").addEventListener("change", (event) => { state.showExternal = event.target.checked; applyFilters(); });
   $("showLabels").addEventListener("change", (event) => { state.showLabels = event.target.checked; labelLayer.style("display", state.showLabels ? null : "none"); });
-  $("clearTopics").addEventListener("click", () => { state.activeTopics.clear(); document.querySelectorAll(".topic-chip").forEach((chip) => chip.classList.remove("active")); applyFilters(); });
+  $("clearTopics").addEventListener("click", () => { state.activeTopics.clear(); document.querySelectorAll(".topic-chip").forEach((chip) => { chip.classList.remove("active"); chip.setAttribute("aria-pressed", "false"); }); applyFilters(); });
   document.querySelectorAll(".topic-chip").forEach((chip) => chip.addEventListener("click", () => {
     const topic = chip.dataset.topic;
-    if (state.activeTopics.has(topic)) { state.activeTopics.delete(topic); chip.classList.remove("active"); }
-    else { state.activeTopics.add(topic); chip.classList.add("active"); }
+    if (state.activeTopics.has(topic)) { state.activeTopics.delete(topic); chip.classList.remove("active"); chip.setAttribute("aria-pressed", "false"); }
+    else { state.activeTopics.add(topic); chip.classList.add("active"); chip.setAttribute("aria-pressed", "true"); }
     applyFilters();
   }));
   $("resetView").addEventListener("click", resetView);
@@ -196,11 +207,13 @@ function applyFilters() {
   state.filteredNodes = filteredNodes; state.filteredEdges = filteredEdges;
   if (state.selectedId && !finalIds.has(state.selectedId)) state.selectedId = null;
   if (state.neighborhoodId && !finalIds.has(state.neighborhoodId)) state.neighborhoodId = null;
-  const inWindowCount = filteredNodes.filter((node) => !node.external).length;
-  $("resultCount").textContent = inWindowCount;
+  const matchCount = [...visibleIds].filter((id) => !nodeById.get(id)?.external).length;
+  $("resultCount").textContent = formatCount(matchCount);
   $("paperStat").textContent = filteredNodes.length;
   $("edgeStat").textContent = filteredEdges.length;
-  $("canvasCoverage").textContent = state.neighborhoodId ? `邻域 ${filteredNodes.length} / 200` : `画布 ${filteredNodes.length} / 200`;
+  $("canvasCoverage").textContent = state.neighborhoodId
+    ? `邻域渲染 ${filteredNodes.length} / 全量 ${formatCount(state.stats.nodes)} · 上限 200`
+    : `渲染 ${filteredNodes.length} / 全量 ${formatCount(state.stats.nodes)} · 上限 200`;
   $("neighborhoodToggle").hidden = !state.neighborhoodId;
   $("neighborhoodButton").hidden = !state.selectedId;
   $("neighborhoodButton").textContent = state.neighborhoodId ? "退出 1 跳邻域" : "在图中查看 1 跳邻域";
@@ -226,10 +239,21 @@ function renderGraph() {
   const links = linkEnter.merge(linkSelection);
   const nodeSelection = nodeLayer.selectAll("g.node").data(nodes, (node) => node.id);
   nodeSelection.exit().transition().duration(120).style("opacity", 0).remove();
-  const nodeEnter = nodeSelection.enter().append("g").attr("class", "node").call(d3.drag().on("start", dragStart).on("drag", dragged).on("end", dragEnd));
+  const nodeEnter = nodeSelection.enter().append("g").attr("class", "node")
+    .attr("role", "button")
+    .attr("tabindex", 0)
+    .attr("aria-label", (node) => `${node.title}，${node.year} 年，点击查看论文详情`)
+    .on("keydown", (event, node) => {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        selectNode(node.id);
+      }
+    })
+    .call(d3.drag().on("start", dragStart).on("drag", dragged).on("end", dragEnd));
   nodeEnter.append("circle").attr("class", "node-circle").attr("r", (node) => node.external ? 4 : Math.min(10, 5 + ((node.citations_count || 0) / 30))).on("click", (event, node) => { event.stopPropagation(); selectNode(node.id); });
   const mergedNodes = nodeEnter.merge(nodeSelection);
-  mergedNodes.select("circle").attr("class", (node) => `node-circle ${node.external ? "external" : `core topic-${topicIndex(node)}`}${state.selectedId === node.id ? " selected" : ""}`);
+  mergedNodes.attr("aria-label", (node) => `${node.title}，${node.year} 年，${node.external ? "外部引用节点" : "收录论文"}，点击查看论文详情`)
+    .select("circle").attr("class", (node) => `node-circle ${node.external ? "external" : `core topic-${topicIndex(node)}`}${state.selectedId === node.id ? " selected" : ""}`);
   const labelSelection = labelLayer.selectAll("text").data(nodes, (node) => node.id);
   labelSelection.exit().remove();
   labelSelection.enter().append("text").attr("class", "node-label").merge(labelSelection).text((node) => shortTitle(node.title)).classed("active", (node) => state.selectedId === node.id);
@@ -317,7 +341,7 @@ function fitGraph() {
   svg.transition().duration(450).call(state.zoom.transform, d3.zoomIdentity.translate(tx, ty).scale(scale));
 }
 
-function resetView() { state.selectedId = null; state.neighborhoodId = null; state.search = ""; $("searchInput").value = ""; state.activeTopics.clear(); document.querySelectorAll(".topic-chip").forEach((chip) => chip.classList.remove("active")); $("showExternal").checked = true; state.showExternal = true; $("yearMin").value = state.yearMin; $("yearMax").value = state.yearMax; $("yearValue").textContent = `${state.yearMin} — ${state.yearMax}`; applyFilters(); }
+function resetView() { state.selectedId = null; state.neighborhoodId = null; state.search = ""; $("searchInput").value = ""; state.activeTopics.clear(); document.querySelectorAll(".topic-chip").forEach((chip) => { chip.classList.remove("active"); chip.setAttribute("aria-pressed", "false"); }); $("showExternal").checked = true; state.showExternal = true; $("yearMin").value = state.yearMin; $("yearMax").value = state.yearMax; $("yearValue").textContent = `${state.yearMin} — ${state.yearMax}`; applyFilters(); }
 function topicIndex(node) { const topic = (node.topics || [])[0] || ""; return Math.abs(hash(topic)) % 4; }
 function hash(text) { return [...String(text)].reduce((sum, char) => ((sum << 5) - sum + char.charCodeAt(0)) | 0, 0); }
 function shortTitle(title) { return title.length > 26 ? `${title.slice(0, 25)}…` : title; }

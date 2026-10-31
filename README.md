@@ -15,7 +15,7 @@ python -m http.server 4173
 
 ## 更新论文数据
 
-默认样本为真实 OpenAlex 数据，当前为 7,916 个论文节点、33,031 条有向引用边的两层递归快照（704 个近期种子 + 3,480 个第一层节点 + 3,732 个第二层节点）。网站保留完整数据，但画布默认最多渲染 200 个节点以保持交互流畅。采集脚本支持按搜索词、年份和分页扩展：
+默认样本为真实 OpenAlex 数据，当前为 9,498 个论文节点、45,287 条有向引用边：包含 7,916 个两层递归节点，并并入按 11 个年份分片采集的 2,200 个 Computer Science 目录样本。网站保留完整数据，但画布默认最多渲染 200 个节点以保持交互流畅。
 
 ```powershell
 python data/collect_openalex_graph.py `
@@ -24,13 +24,22 @@ python data/collect_openalex_graph.py `
   --include-external --out data/ai_graph.json
 ```
 
-当前递归快照先搜索近年的 AI/CS 论文，再沿每篇论文的 `referenced_works` 批量抓取第一层引用论文：
+当前递归快照先搜索近年的 AI/CS 论文，再沿每篇论文的 `referenced_works` 批量抓取两层引用论文：
 
 ```powershell
 python data/collect_recursive_graph.py `
   --target-nodes 7500 --seed-per-page 200 --seed-limit 1000 `
   --max-depth 2 --max-fetch-per-layer 6000 `
   --out data/recursive_graph_10000.json
+```
+
+如需生成当前网站使用的“递归图 + 年度 CS 目录样本”联合快照：
+
+```powershell
+python data/merge_recursive_catalog.py `
+  --recursive data/recursive_graph_10000.json `
+  --catalog data/cs_field_catalog_2200.json `
+  --out data/ai_cs_graph_coverage_9500.json
 ```
 
 如需合并多个主题切片，也可以使用：
@@ -43,7 +52,7 @@ python data/merge_openalex_graphs.py `
 
 合并器会按 OpenAlex ID 去重，并从 2023 年以来的 AI / machine learning 种子沿 `source -> target` 引用边计算遍历层级。
 
-将生成的 JSON 复制到 `frontend/data.sample.json` 后刷新网站即可。当前样本是可复现切片，不代表近十年 AI/CS 论文的完整覆盖；大规模版本需要持续分页、去重、覆盖率审计和增量同步。
+将生成的 JSON 复制到 `frontend/data.sample.json` 后刷新网站即可。当前联合快照显示 OpenAlex Computer Science 核心类型目录的 5,435,295 篇期望分母和 2,200 篇目录样本（0.0405%）；它是可复现的有限样本，不代表近十年 AI/CS 论文的完整覆盖。完整导入需要 API key、断点续传、去重和持续覆盖率审计。
 
 ## 目录
 

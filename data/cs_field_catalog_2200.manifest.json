@@ -1,0 +1,148 @@
+{
+  "generated_at": "2026-10-31T20:08:36.654848+00:00",
+  "coverage": {
+    "slices": [
+      {
+        "from_date": "2016-11-01",
+        "to_date": "2016-12-31",
+        "filter": "from_publication_date:2016-11-01,to_publication_date:2016-12-31,primary_topic.field.id:17,type:article|conference-paper|preprint|review",
+        "search": null,
+        "expected_count": 51943,
+        "retrieved_count": 200,
+        "pages": 1,
+        "sort": "cited_by_count:desc",
+        "unique_nodes_added": 200
+      },
+      {
+        "from_date": "2017-01-01",
+        "to_date": "2017-12-31",
+        "filter": "from_publication_date:2017-01-01,to_publication_date:2017-12-31,primary_topic.field.id:17,type:article|conference-paper|preprint|review",
+        "search": null,
+        "expected_count": 387165,
+        "retrieved_count": 200,
+        "pages": 1,
+        "sort": "cited_by_count:desc",
+        "unique_nodes_added": 200
+      },
+      {
+        "from_date": "2018-01-01",
+        "to_date": "2018-12-31",
+        "filter": "from_publication_date:2018-01-01,to_publication_date:2018-12-31,primary_topic.field.id:17,type:article|conference-paper|preprint|review",
+        "search": null,
+        "expected_count": 414694,
+        "retrieved_count": 200,
+        "pages": 1,
+        "sort": "cited_by_count:desc",
+        "unique_nodes_added": 200
+      },
+      {
+        "from_date": "2019-01-01",
+        "to_date": "2019-12-31",
+        "filter": "from_publication_date:2019-01-01,to_publication_date:2019-12-31,primary_topic.field.id:17,type:article|conference-paper|preprint|review",
+        "search": null,
+        "expected_count": 446174,
+        "retrieved_count": 200,
+        "pages": 1,
+        "sort": "cited_by_count:desc",
+        "unique_nodes_added": 200
+      },
+      {
+        "from_date": "2020-01-01",
+        "to_date": "2020-12-31",
+        "filter": "from_publication_date:2020-01-01,to_publication_date:2020-12-31,primary_topic.field.id:17,type:article|conference-paper|preprint|review",
+        "search": null,
+        "expected_count": 458149,
+        "retrieved_count": 200,
+        "pages": 1,
+        "sort": "cited_by_count:desc",
+        "unique_nodes_added": 200
+      },
+      {
+        "from_date": "2021-01-01",
+        "to_date": "2021-12-31",
+        "filter": "from_publication_date:2021-01-01,to_publication_date:2021-12-31,primary_topic.field.id:17,type:article|conference-paper|preprint|review",
+        "search": null,
+        "expected_count": 458599,
+        "retrieved_count": 200,
+        "pages": 1,
+        "sort": "cited_by_count:desc",
+        "unique_nodes_added": 200
+      },
+      {
+        "from_date": "2022-01-01",
+        "to_date": "2022-12-31",
+        "filter": "from_publication_date:2022-01-01,to_publication_date:2022-12-31,primary_topic.field.id:17,type:article|conference-paper|preprint|review",
+        "search": null,
+        "expected_count": 462917,
+        "retrieved_count": 200,
+        "pages": 1,
+        "sort": "cited_by_count:desc",
+        "unique_nodes_added": 200
+      },
+      {
+        "from_date": "2023-01-01",
+        "to_date": "2023-12-31",
+        "filter": "from_publication_date:2023-01-01,to_publication_date:2023-12-31,primary_topic.field.id:17,type:article|conference-paper|preprint|review",
+        "search": null,
+        "expected_count": 524583,
+        "retrieved_count": 200,
+        "pages": 1,
+        "sort": "cited_by_count:desc",
+        "unique_nodes_added": 200
+      },
+      {
+        "from_date": "2024-01-01",
+        "to_date": "2024-12-31",
+        "filter": "from_publication_date:2024-01-01,to_publication_date:2024-12-31,primary_topic.field.id:17,type:article|conference-paper|preprint|review",
+        "search": null,
+        "expected_count": 613546,
+        "retrieved_count": 200,
+        "pages": 1,
+        "sort": "cited_by_count:desc",
+        "unique_nodes_added": 200
+      },
+      {
+        "from_date": "2025-01-01",
+        "to_date": "2025-12-31",
+        "filter": "from_publication_date:2025-01-01,to_publication_date:2025-12-31,primary_topic.field.id:17,type:article|conference-paper|preprint|review",
+        "search": null,
+        "expected_count": 762263,
+        "retrieved_count": 200,
+        "pages": 1,
+        "sort": "cited_by_count:desc",
+        "unique_nodes_added": 200
+      },
+      {
+        "from_date": "2026-01-01",
+        "to_date": "2026-10-31",
+        "filter": "from_publication_date:2026-01-01,to_publication_date:2026-10-31,primary_topic.field.id:17,type:article|conference-paper|preprint|review",
+        "search": null,
+        "expected_count": 855262,
+        "retrieved_count": 200,
+        "pages": 1,
+        "sort": "cited_by_count:desc",
+        "unique_nodes_added": 200
+      }
+    ],
+    "expected_count": 5435295,
+    "retrieved_unique_count": 2200
+  },
+  "query": {
+    "from_date": "2016-11-01",
+    "to_date": "2026-10-31",
+    "field_id": "17",
+    "topic_ids": [],
+    "concept_ids": [],
+    "types": [
+      "article",
+      "conference-paper",
+      "preprint",
+      "review"
+    ],
+    "search": null,
+    "per_page": 200,
+    "per_slice": 200,
+    "max_works": 2200,
+    "sort": "cited_by_count:desc"
+  }
+}

@@ -169,6 +169,8 @@ kbd { padding: 2px 5px; border: 1px solid var(--border); border-radius: 4px; col
 
 .node-label { fill: #a7b4c8; font-size: 9px; pointer-events: none; }
 .node-label.active { fill: #fff; font-weight: 600; }
+.node:focus-visible { outline: none; }
+.node:focus-visible .node-circle { stroke: #fff; stroke-width: 2.5; filter: drop-shadow(0 0 8px rgba(123, 226, 255, .85)); }
 .node-circle { stroke: rgba(123, 226, 255, .4); stroke-width: 1; cursor: pointer; transition: opacity .18s ease; }
 .node-circle.core { fill: #2c7eae; }
 .node-circle.core.topic-0 { fill: #5d5fcc; }
