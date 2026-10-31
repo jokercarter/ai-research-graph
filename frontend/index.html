@@ -87,18 +87,24 @@
           </div>
 
           <div class="sidebar-footer">
-            <div class="mini-stat"><strong id="paperStat">0</strong><span>画布节点</span></div>
-            <div class="mini-stat"><strong id="edgeStat">0</strong><span>画布边</span></div>
-            <div class="mini-stat"><strong id="topicStat">0</strong><span>主题</span></div>
+            <div class="mini-stat"><strong id="paperStat">0</strong><span id="paperStatLabel">画布节点</span></div>
+            <div class="mini-stat"><strong id="edgeStat">0</strong><span id="edgeStatLabel">画布边</span></div>
+            <div class="mini-stat"><strong id="topicStat">0</strong><span id="topicStatLabel">主题</span></div>
           </div>
         </aside>
 
         <section class="graph-column">
           <div class="graph-toolbar">
             <div class="toolbar-copy">
-              <p class="section-kicker">引用网络 · 有向图</p>
-              <h2>研究演化地图</h2>
-              <p>初始显示引用量最高的论文；搜索后展开相关引用节点，当前簇的拓扑前沿或获奖论文会用更大的高亮节点标记。</p>
+              <p class="section-kicker" id="viewKicker">研究领域 · 聚合图</p>
+              <h2 id="viewTitle">AI/CS 领域总览</h2>
+              <p id="viewDescription">先看领域簇的规模、引用流向和前沿数量，再进入单个领域的论文图。</p>
+            </div>
+            <div class="view-tabs" id="viewTabs" role="tablist" aria-label="图谱视图">
+              <button class="view-tab active" type="button" role="tab" aria-selected="true" data-view="overview">领域总览</button>
+              <button class="view-tab" type="button" role="tab" aria-selected="false" data-view="papers">论文图</button>
+              <button class="view-tab" type="button" role="tab" aria-selected="false" data-view="lineage">引用谱系</button>
+              <button class="view-tab" type="button" role="tab" aria-selected="false" data-view="frontiers">前沿榜单</button>
             </div>
             <div class="toolbar-actions">
               <span class="canvas-coverage" id="canvasCoverage" aria-live="polite">渲染 0 / 全量 0 · 上限 100</span>
@@ -115,7 +121,9 @@
               <span>完整引用网络保留在快照中，画布按当前节点上限渲染</span>
             </div>
             <div class="graph-hint"><span class="hint-key">拖动</span>节点移动 · <span class="hint-key">滚轮</span>缩放 · 点击节点查看详情 · 箭头表示引用者 → 被引论文</div>
-            <svg id="graph" role="img" aria-label="AI 论文引用关系子图；完整网络统计见左侧；画布按当前节点上限渲染"></svg>
+            <svg id="graph" role="img" aria-label="AI/CS 领域或论文引用关系图"></svg>
+            <div class="frontier-board" id="frontierBoard" hidden></div>
+            <div class="lineage-board" id="lineageBoard" hidden></div>
             <div class="empty-state" id="emptyState" hidden>
               <div class="empty-icon">∅</div>
               <h3>没有匹配的论文</h3>
@@ -133,9 +141,9 @@
         <aside class="details-panel panel" id="detailsPanel">
           <div class="details-empty" id="detailsEmpty">
             <div class="details-orbit"><span></span><span></span><span></span></div>
-            <p class="section-kicker">论文详情</p>
-            <h2>选择一个节点</h2>
-            <p>点击图中的论文，查看元数据、引用关系和研究主题。</p>
+            <p class="section-kicker" id="detailsEmptyKicker">论文详情</p>
+            <h2 id="detailsEmptyTitle">选择一个节点</h2>
+            <p id="detailsEmptyCopy">点击图中的论文，查看元数据、引用关系和研究主题。</p>
           </div>
           <div class="details-content" id="detailsContent" hidden>
             <div class="detail-topline"><span class="paper-year" id="detailYear"></span><span class="paper-type" id="detailType">PAPER</span></div>
@@ -157,6 +165,27 @@
             </div>
             <button class="neighborhood-button" id="neighborhoodButton" type="button">在图中查看 1 跳邻域</button>
             <a class="source-link" id="detailLink" href="#" target="_blank" rel="noreferrer">打开论文来源 <span>↗</span></a>
+          </div>
+          <div class="domain-details" id="domainDetails" hidden>
+            <div class="detail-topline"><span class="paper-year" id="domainYear"></span><span class="paper-type">领域簇</span></div>
+            <h2 id="domainTitle"></h2>
+            <p class="detail-venue" id="domainMeta"></p>
+            <div class="relation-summary">
+              <div><span>论文</span><strong id="domainPapers">0</strong></div>
+              <div><span>引用</span><strong id="domainCitations">0</strong></div>
+              <div><span>前沿</span><strong id="domainFrontiers">0</strong></div>
+            </div>
+            <div class="related-section">
+              <div class="related-heading"><span>领域前沿</span><span class="related-count" id="domainFrontierCount">0</span></div>
+              <div class="related-list" id="domainFrontierList"></div>
+            </div>
+            <button class="neighborhood-button" id="domainOpenButton" type="button">打开论文图</button>
+          </div>
+          <div class="frontier-details" id="frontierDetails" hidden>
+            <p class="section-kicker">FRONTIER BOARD</p>
+            <h2>各领域前沿</h2>
+            <p class="details-intro">黄色节点来自簇内拓扑前沿；有奖项元数据时会额外标记获奖论文。</p>
+            <div class="frontier-summary-list" id="frontierSummaryList"></div>
           </div>
         </aside>
       </main>
