@@ -121,7 +121,7 @@
               <span>完整引用网络保留在快照中，画布按当前节点上限渲染</span>
             </div>
             <div class="graph-hint"><span class="hint-key">拖动</span>节点移动 · <span class="hint-key">滚轮</span>缩放 · 点击节点查看详情 · 箭头表示引用者 → 被引论文</div>
-            <svg id="graph" role="img" aria-label="AI/CS 领域或论文引用关系图"></svg>
+            <svg id="graph" role="group" aria-label="AI/CS 领域或论文引用关系图"></svg>
             <div class="frontier-board" id="frontierBoard" hidden></div>
             <div class="lineage-board" id="lineageBoard" hidden></div>
             <div class="empty-state" id="emptyState" hidden>
@@ -138,7 +138,7 @@
           </div>
         </section>
 
-        <aside class="details-panel panel" id="detailsPanel">
+        <aside class="details-panel panel" id="detailsPanel" aria-live="polite" aria-label="节点详细信息">
           <div class="details-empty" id="detailsEmpty">
             <div class="details-orbit"><span></span><span></span><span></span></div>
             <p class="section-kicker" id="detailsEmptyKicker">论文详情</p>

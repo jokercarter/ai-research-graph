@@ -639,6 +639,10 @@ function renderPaperGraph() {
     .attr("role", "button")
     .attr("tabindex", 0)
     .attr("aria-label", (node) => `${node.title}，${node.year} 年，${nodeDescriptor(node)}，点击查看论文详情`)
+    .on("click", (event, node) => {
+      event.stopPropagation();
+      selectNode(node.id);
+    })
     .on("keydown", (event, node) => {
       if (event.key === "Enter" || event.key === " ") {
         event.preventDefault();
@@ -757,6 +761,7 @@ function renderDetails(node) {
   $("domainDetails").hidden = true;
   $("frontierDetails").hidden = true;
   $("detailsEmpty").hidden = true; $("detailsContent").hidden = false;
+  $("detailsPanel").scrollTop = 0;
   $("neighborhoodButton").hidden = false;
   $("neighborhoodButton").textContent = state.neighborhoodId ? "退出邻域" : `在图中查看 ${state.neighborhoodDepth} 跳邻域`;
   $("detailYear").textContent = node.year;
