@@ -1,6 +1,6 @@
 # AI Research Graph 前端原型
 
-这是一个不依赖构建工具的静态前端原型，打开 `index.html` 即可查看界面。默认的 `data.sample.json.gz` 是 OpenAlex 与 CitationCS 的联合快照（当前 33,425 个节点、172,138 条有向引用边），包含两层递归引用图、按年份均衡的 CS 目录样本、多主题 AI/CS 切片和 CitationCS 两层引用子图；它不是近十年论文的全量索引。页面会在浏览器端解压 gzip 快照。为了让 `fetch("data.sample.json.gz")` 在浏览器中工作，建议在 `frontend/` 目录启动任意静态文件服务器，例如：
+这是一个不依赖构建工具的静态前端原型，打开 `index.html` 即可查看界面。默认的 `data.sample.json.gz` 是 OpenAlex 与 CitationCS 的联合快照（当前 56,832 个节点、330,245 条有向引用边），包含两层递归引用图、按年份均衡的 CS 目录样本、多主题 AI/CS 切片和 CitationCS 两层引用子图；它不是近十年论文的全量索引。页面会在浏览器端解压 gzip 快照。为了让 `fetch("data.sample.json.gz")` 在浏览器中工作，建议在 `frontend/` 目录启动任意静态文件服务器，例如：
 
 ```powershell
 python -m http.server 4173

@@ -2,7 +2,7 @@
 
 This directory contains the reproducible data path for the AI Research Graph website.
 
-The current website snapshot is `ai_cs_graph_citationcs_35000.json.gz`: a 33,425-work union with 172,138 directed citation edges. It combines the 7,916-work OpenAlex two-layer recursive graph, a 2,200-work year-balanced Computer Science catalogue sample, the multi-topic AI/CS slice, and a 24,881-work two-layer CitationCS traversal. `recursive_graph_10000.json` remains the recursive source, `cs_field_catalog_2200.json` records the auditable field-filtered sample, `citationcs_ai_cs_slice.json.gz` records the offline traversal, and `sample_graph.json` remains the smoke-test fixture.
+The current website snapshot is `ai_cs_graph_citationcs_60000.json.gz`: a 56,832-work union with 330,245 directed citation edges. It combines the 7,916-work OpenAlex two-layer recursive graph, a 2,200-work year-balanced Computer Science catalogue sample, the multi-topic AI/CS slice, and a 47,954-work two-layer CitationCS traversal. `recursive_graph_10000.json` remains the recursive source, `cs_field_catalog_2200.json` records the auditable field-filtered sample, `citationcs_ai_cs_slice_50000.json.gz` records the offline traversal, and `sample_graph.json` remains the smoke-test fixture.
 
 ## What is authoritative
 
@@ -74,8 +74,8 @@ python data/merge_recursive_catalog.py `
   --recursive data/recursive_graph_10000.json `
   --catalog data/cs_field_catalog_2200.json `
   --topic-slice data/ai_cs_graph_expanded.json `
-  --citationcs data/citationcs_ai_cs_slice.json.gz `
-  --out data/ai_cs_graph_citationcs_35000.json.gz
+  --citationcs data/citationcs_ai_cs_slice_50000.json.gz `
+  --out data/ai_cs_graph_citationcs_60000.json.gz
 ```
 
 The union retains `coverage.catalog_expected_count`, `coverage.catalog_sample_count`, and `coverage.catalog_sample_fraction`. It is explicitly marked `meta.is_exhaustive: false`; the denominator is a measurement for planning a larger import, not a claim that the JSON contains every eligible work.
@@ -113,12 +113,12 @@ python data/download_citationcs.py `
   --out D:\research\citation_cache\citation_cs.zip
 python data/import_citationcs.py `
   --archive D:\research\citation_cache\citation_cs.zip `
-  --existing data/ai_cs_graph_citationcs_35000.json.gz `
-  --depth 2 --max-seeds 7000 --max-nodes 25000 `
-  --out data/citationcs_ai_cs_slice.json.gz
+  --existing data/ai_cs_graph_citationcs_60000.json.gz `
+  --depth 2 --max-seeds 10000 --max-nodes 50000 `
+  --out data/citationcs_ai_cs_slice_50000.json.gz
 ```
 
-The verified local run emitted 24,881 nodes and 127,279 edges. It is marked
+The verified local run emitted 47,954 nodes and 285,003 edges. It is marked
 `meta.is_exhaustive: false`; the archive is a useful static CS base, not a
 real-time or complete ten-year AI/CS census. CitationCS edges retain
 `source_system: "citationcs"` and are not relabeled as OpenAlex relations.

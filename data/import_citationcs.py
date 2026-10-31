@@ -37,15 +37,15 @@ WINDOW_END = "2026-10-31"
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--archive", required=True, help="Path to citation_cs.zip")
-    parser.add_argument("--existing", default="data/ai_cs_graph_coverage_10000.json", help="Existing graph used for seed IDs")
-    parser.add_argument("--out", default="data/citationcs_ai_cs_slice.json")
+    parser.add_argument("--existing", default="data/ai_cs_graph_citationcs_60000.json.gz", help="Existing graph used for seed IDs")
+    parser.add_argument("--out", default="data/citationcs_ai_cs_slice_50000.json.gz")
     parser.add_argument("--from-date", default=WINDOW_START)
     parser.add_argument("--to-date", default=WINDOW_END)
     parser.add_argument("--depth", type=int, default=2, help="Reference traversal depth")
-    parser.add_argument("--max-seeds", type=int, default=7000)
-    parser.add_argument("--existing-seed-limit", type=int, default=3500)
-    parser.add_argument("--seeds-per-year", type=int, default=300)
-    parser.add_argument("--max-nodes", type=int, default=25000)
+    parser.add_argument("--max-seeds", type=int, default=10000)
+    parser.add_argument("--existing-seed-limit", type=int, default=5000)
+    parser.add_argument("--seeds-per-year", type=int, default=450)
+    parser.add_argument("--max-nodes", type=int, default=50000)
     return parser.parse_args()
 
 

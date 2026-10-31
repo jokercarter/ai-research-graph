@@ -2,11 +2,11 @@
 
 ## Scope
 
-This audit compares the existing keyword/recursive collectors with a broader, field-filtered catalogue mode and a local CitationCS traversal. It uses the exact roadmap window (`2016-11-01` through `2026-10-31`). The website now uses the reproducible union `ai_cs_graph_citationcs_35000.json.gz`, which combines OpenAlex recursive/catalogue/topic slices with a CitationCS two-layer subgraph.
+This audit compares the existing keyword/recursive collectors with a broader, field-filtered catalogue mode and a local CitationCS traversal. It uses the exact roadmap window (`2016-11-01` through `2026-10-31`). The website now uses the reproducible union `ai_cs_graph_citationcs_60000.json.gz`, which combines OpenAlex recursive/catalogue/topic slices with a CitationCS two-layer subgraph.
 
 ## Current website snapshot
 
-The current union contains **33,425 nodes** and **172,138 directed citation edges**. It includes the 7,916-node OpenAlex recursive source, 2,200 field-filtered catalogue nodes, 1,063 multi-topic slice nodes, and a 24,881-node CitationCS traversal. The CitationCS traversal adds 23,554 nodes to the union and contributes 127,279 unique edges before cross-source de-duplication. The website carries `source_system` and `provenance_sources` on edges so the two providers remain distinguishable.
+The current union contains **56,832 nodes** and **330,245 directed citation edges**. It includes the 7,916-node OpenAlex recursive source, 2,200 field-filtered catalogue nodes, 1,063 multi-topic slice nodes, and a 47,954-node CitationCS traversal. The CitationCS traversal adds 46,961 nodes to the union and contributes 285,003 unique edges before cross-source de-duplication. The website carries `source_system` and `provenance_sources` on edges so the two providers remain distinguishable.
 
 CitationCS is a static 2025-07-28 Zenodo archive with 3,720,575 papers and 22,908,275 internal citations. Its records use OpenAlex `W...` identifiers and `ref_lst`; the importer filters Computer Science primary topics, chooses recent/AI-prioritized seeds, and follows references to depth 2. The traversal is a bounded slice, not a claim that the archive or the ten-year AI/CS corpus is fully rendered.
 

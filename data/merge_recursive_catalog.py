@@ -24,7 +24,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--catalog", default="data/cs_field_catalog_2200.json")
     parser.add_argument("--topic-slice", action="append", default=[], help="Optional topic-slice JSON; repeatable")
     parser.add_argument("--citationcs", action="append", default=[], help="Optional CitationCS traversal JSON; repeatable")
-    parser.add_argument("--out", default="data/ai_cs_graph_citationcs_35000.json")
+    parser.add_argument("--out", default="data/ai_cs_graph_citationcs_60000.json.gz")
     return parser.parse_args()
 
 
