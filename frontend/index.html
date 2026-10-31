@@ -67,6 +67,14 @@
             <div class="filter-label-row"><span>图谱范围</span></div>
             <label class="toggle-row"><input id="showExternal" type="checkbox" checked /><span class="toggle"></span><span>显示外部引用节点</span></label>
             <label class="toggle-row"><input id="showLabels" type="checkbox" checked /><span class="toggle"></span><span>显示论文标签</span></label>
+            <label class="select-row" for="renderLimit">
+              <span>画布节点上限</span>
+              <select id="renderLimit" class="select-control" aria-label="画布节点上限">
+                <option value="200">200</option>
+                <option value="500">500</option>
+                <option value="1000">1,000</option>
+              </select>
+            </label>
           </div>
 
           <div class="sidebar-footer">
@@ -95,10 +103,10 @@
             <div class="loading-state" id="loadingState" role="status">
               <span class="loading-spinner" aria-hidden="true"></span>
               <strong>正在加载论文引用图…</strong>
-              <span>完整引用网络保留在快照中，画布最多渲染 200 个节点</span>
+              <span>完整引用网络保留在快照中，画布按当前节点上限渲染</span>
             </div>
             <div class="graph-hint"><span class="hint-key">拖动</span>节点移动 · <span class="hint-key">滚轮</span>缩放 · 点击节点查看详情 · 箭头表示引用者 → 被引论文</div>
-            <svg id="graph" role="img" aria-label="AI 论文引用关系子图；完整网络统计见左侧；画布最多渲染 200 个节点"></svg>
+            <svg id="graph" role="img" aria-label="AI 论文引用关系子图；完整网络统计见左侧；画布按当前节点上限渲染"></svg>
             <div class="empty-state" id="emptyState" hidden>
               <div class="empty-icon">∅</div>
               <h3>没有匹配的论文</h3>

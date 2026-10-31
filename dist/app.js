@@ -22,6 +22,7 @@ const state = {
   yearMax: 2026,
   showExternal: true,
   showLabels: true,
+  renderLimit: 200,
   search: "",
   zoom: null,
   simulation: null,
@@ -144,7 +145,7 @@ function updateDatasetStats() {
     coverageNotes.push(`CitationCS 子图 ${formatCount(coverage.citationcsSampleCount)} / ${label} ${formatCount(denominator)} 篇`);
   }
   const coverageNote = coverageNotes.length ? `；${coverageNotes.join("；")}` : "";
-  $("datasetNote").textContent = `完整快照 ${formatCount(state.stats.nodes)} 节点 / ${formatCount(state.stats.edges)} 边${timestamp}${coverageNote}；这是可追溯的有限样本，画布是受限子图，最多渲染 200 个节点，可用搜索或一跳邻域查看局部关系。`;
+  $("datasetNote").textContent = `完整快照 ${formatCount(state.stats.nodes)} 节点 / ${formatCount(state.stats.edges)} 边${timestamp}${coverageNote}；这是可追溯的有限样本，画布是受限子图，最多渲染 ${formatCount(state.renderLimit)} 个节点，可用搜索或一跳邻域查看局部关系。`;
 }
 
 function formatCount(value) {
@@ -166,6 +167,11 @@ function setupFilters() {
   $("searchInput").addEventListener("input", (event) => { state.search = event.target.value.trim().toLowerCase(); applyFilters(); });
   $("showExternal").addEventListener("change", (event) => { state.showExternal = event.target.checked; applyFilters(); });
   $("showLabels").addEventListener("change", (event) => { state.showLabels = event.target.checked; labelLayer.style("display", state.showLabels ? null : "none"); });
+  $("renderLimit").addEventListener("change", (event) => {
+    state.renderLimit = Math.max(100, Number(event.target.value) || 200);
+    updateDatasetStats();
+    applyFilters();
+  });
   $("clearTopics").addEventListener("click", () => { state.activeTopics.clear(); document.querySelectorAll(".topic-chip").forEach((chip) => { chip.classList.remove("active"); chip.setAttribute("aria-pressed", "false"); }); applyFilters(); });
   document.querySelectorAll(".topic-chip").forEach((chip) => chip.addEventListener("click", () => {
     const topic = chip.dataset.topic;
@@ -222,10 +228,12 @@ function applyFilters() {
   // Keep the visual layer bounded for large snapshots while preserving the
   // full dataset for the eventual API and ingestion pipeline.
   let filteredNodes = state.data.nodes.filter((node) => visibleIds.has(node.id));
-  if (filteredNodes.length > 200) {
+  if (filteredNodes.length > state.renderLimit) {
     const ranked = [...filteredNodes].sort((a, b) => (b.citations_count || 0) - (a.citations_count || 0));
     const focus = state.neighborhoodId ? nodeById.get(state.neighborhoodId) : null;
-    filteredNodes = focus ? [focus, ...ranked.filter((node) => node.id !== focus.id).slice(0, 199)] : ranked.slice(0, 200);
+    filteredNodes = focus
+      ? [focus, ...ranked.filter((node) => node.id !== focus.id).slice(0, state.renderLimit - 1)]
+      : ranked.slice(0, state.renderLimit);
   }
   const finalIds = new Set(filteredNodes.map((node) => node.id));
   const filteredEdges = state.data.edges.filter((edge) => finalIds.has(edge.source) && finalIds.has(edge.target));
@@ -237,8 +245,8 @@ function applyFilters() {
   $("paperStat").textContent = filteredNodes.length;
   $("edgeStat").textContent = filteredEdges.length;
   $("canvasCoverage").textContent = state.neighborhoodId
-    ? `邻域渲染 ${filteredNodes.length} / 全量 ${formatCount(state.stats.nodes)} · 上限 200`
-    : `渲染 ${filteredNodes.length} / 全量 ${formatCount(state.stats.nodes)} · 上限 200`;
+    ? `邻域渲染 ${filteredNodes.length} / 全量 ${formatCount(state.stats.nodes)} · 上限 ${formatCount(state.renderLimit)}`
+    : `渲染 ${filteredNodes.length} / 全量 ${formatCount(state.stats.nodes)} · 上限 ${formatCount(state.renderLimit)}`;
   $("neighborhoodToggle").hidden = !state.neighborhoodId;
   $("neighborhoodButton").hidden = !state.selectedId;
   $("neighborhoodButton").textContent = state.neighborhoodId ? "退出 1 跳邻域" : "在图中查看 1 跳邻域";
@@ -366,7 +374,7 @@ function fitGraph() {
   svg.transition().duration(450).call(state.zoom.transform, d3.zoomIdentity.translate(tx, ty).scale(scale));
 }
 
-function resetView() { state.selectedId = null; state.neighborhoodId = null; state.search = ""; $("searchInput").value = ""; state.activeTopics.clear(); document.querySelectorAll(".topic-chip").forEach((chip) => { chip.classList.remove("active"); chip.setAttribute("aria-pressed", "false"); }); $("showExternal").checked = true; state.showExternal = true; $("yearMin").value = state.yearMin; $("yearMax").value = state.yearMax; $("yearValue").textContent = `${state.yearMin} — ${state.yearMax}`; applyFilters(); }
+function resetView() { state.selectedId = null; state.neighborhoodId = null; state.search = ""; $("searchInput").value = ""; state.activeTopics.clear(); document.querySelectorAll(".topic-chip").forEach((chip) => { chip.classList.remove("active"); chip.setAttribute("aria-pressed", "false"); }); $("showExternal").checked = true; state.showExternal = true; state.renderLimit = 200; $("renderLimit").value = "200"; $("yearMin").value = state.yearMin; $("yearMax").value = state.yearMax; $("yearValue").textContent = `${state.yearMin} — ${state.yearMax}`; updateDatasetStats(); applyFilters(); }
 function topicIndex(node) { const topic = (node.topics || [])[0] || ""; return Math.abs(hash(topic)) % 4; }
 function hash(text) { return [...String(text)].reduce((sum, char) => ((sum << 5) - sum + char.charCodeAt(0)) | 0, 0); }
 function shortTitle(title) { return title.length > 26 ? `${title.slice(0, 25)}…` : title; }
