@@ -34,6 +34,16 @@
             <span class="count-badge" id="resultCount">0</span>
           </div>
 
+          <div class="dataset-card" aria-live="polite">
+            <div class="dataset-card-heading"><span>全量数据集</span><span class="dataset-source" id="datasetSource">快照</span></div>
+            <div class="dataset-stats">
+              <div><strong id="datasetNodes">0</strong><span>论文节点</span></div>
+              <div><strong id="datasetEdges">0</strong><span>引用边</span></div>
+              <div><strong id="datasetTopics">0</strong><span>主题</span></div>
+            </div>
+            <p class="dataset-note" id="datasetNote">正在读取完整数据统计…</p>
+          </div>
+
           <label class="search-box" for="searchInput">
             <span class="search-icon" aria-hidden="true">⌕</span>
             <input id="searchInput" type="search" placeholder="搜索标题、作者、主题" autocomplete="off" />
@@ -60,8 +70,8 @@
           </div>
 
           <div class="sidebar-footer">
-            <div class="mini-stat"><strong id="paperStat">0</strong><span>论文节点</span></div>
-            <div class="mini-stat"><strong id="edgeStat">0</strong><span>引用关系</span></div>
+            <div class="mini-stat"><strong id="paperStat">0</strong><span>画布节点</span></div>
+            <div class="mini-stat"><strong id="edgeStat">0</strong><span>画布边</span></div>
             <div class="mini-stat"><strong id="topicStat">0</strong><span>主题</span></div>
           </div>
         </aside>
@@ -74,12 +84,19 @@
               <p>沿着真实引用边，观察方法如何从基础论文扩散到后续研究。</p>
             </div>
             <div class="toolbar-actions">
+              <span class="canvas-coverage" id="canvasCoverage">画布 0 / 200</span>
+              <button class="ghost-button neighborhood-toggle" id="neighborhoodToggle" type="button" hidden>退出邻域</button>
               <button class="icon-button" id="zoomOut" type="button" aria-label="缩小">−</button>
               <button class="icon-button" id="zoomIn" type="button" aria-label="放大">+</button>
               <button class="icon-button" id="fitGraph" type="button" aria-label="适应窗口">⌗</button>
             </div>
           </div>
           <div class="graph-panel panel" id="graphPanel">
+            <div class="loading-state" id="loadingState" role="status">
+              <span class="loading-spinner" aria-hidden="true"></span>
+              <strong>正在加载论文引用图…</strong>
+              <span>完整数据保留在快照中，画布最多渲染 200 个节点</span>
+            </div>
             <div class="graph-hint"><span class="hint-key">拖动</span>节点移动 · <span class="hint-key">滚轮</span>缩放 · 点击节点查看详情</div>
             <svg id="graph" role="img" aria-label="AI 论文引用关系图"></svg>
             <div class="empty-state" id="emptyState" hidden>
@@ -120,6 +137,7 @@
               <div class="related-heading"><span>相邻论文</span><span class="related-count" id="relatedCount">0</span></div>
               <div class="related-list" id="relatedList"></div>
             </div>
+            <button class="neighborhood-button" id="neighborhoodButton" type="button">在图中查看 1 跳邻域</button>
             <a class="source-link" id="detailLink" href="#" target="_blank" rel="noreferrer">打开论文来源 <span>↗</span></a>
           </div>
         </aside>
@@ -127,7 +145,7 @@
 
       <footer class="footer-bar">
         <div><span class="footer-pulse"></span><span>当前视图：</span><strong id="viewSummary">全部论文</strong></div>
-        <div class="footer-note">引用关系来自 OpenAlex 快照 · 当前为可复现样本，目标窗口 2016–2026</div>
+        <div class="footer-note">引用关系来自 OpenAlex 递归快照 · 目标窗口 2016–2026</div>
       </footer>
     </div>
     <script src="app.js"></script>

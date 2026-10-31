@@ -1,6 +1,6 @@
 # AI Research Graph 前端原型
 
-这是一个不依赖构建工具的静态前端原型，打开 `index.html` 即可查看界面。默认的 `data.sample.json` 是由 `data/collect_openalex_graph.py` 生成的真实 OpenAlex 快照（当前 11 个节点、14 条有向引用边），用于验证端到端图谱体验；它不是近十年论文的全量索引。为了让 `fetch("data.sample.json")` 在浏览器中工作，建议在 `frontend/` 目录启动任意静态文件服务器，例如：
+这是一个不依赖构建工具的静态前端原型，打开 `index.html` 即可查看界面。默认的 `data.sample.json` 是由近年 AI/CS 种子沿 `referenced_works` 递归扩展得到的真实 OpenAlex 快照（当前 3,191 个节点、5,109 条有向引用边），用于验证端到端图谱体验；它不是近十年论文的全量索引。为了让 `fetch("data.sample.json")` 在浏览器中工作，建议在 `frontend/` 目录启动任意静态文件服务器，例如：
 
 ```powershell
 python -m http.server 4173
@@ -14,6 +14,15 @@ python -m http.server 4173
 
 ```json
 {
+  "stats": {
+    "nodes": 1000,
+    "edges": 9000,
+    "topics": 48
+  },
+  "provenance": {
+    "provider": "OpenAlex",
+    "generated_at": "2026-10-31"
+  },
   "nodes": [
     {
       "id": "openalex-or-internal-id",
@@ -35,6 +44,8 @@ python -m http.server 4173
 ```
 
 `source -> target` 表示前者引用后者。`external: true` 用于时间窗口外但仍被引用的基础论文；左侧开关可以隐藏这些节点。界面会根据节点主题、年份和搜索词重建可视子图，并支持拖动、缩放和点击节点查看相邻论文。
+
+完整快照的节点数和引用边数由 `stats` 提供并始终显示在左侧；为了保持力导图流畅，画布一次最多渲染 200 个节点。选中任意论文后，可以切换到它的一跳邻域，查看该论文的直接引用和被引关系。
 
 ## 与后端集成
 
