@@ -23,7 +23,8 @@ const state = {
   yearMax: 2026,
   showExternal: true,
   showLabels: true,
-  renderLimit: 200,
+  renderLimit: 100,
+  searchMatchIds: new Set(),
   search: "",
   zoom: null,
   simulation: null,
@@ -167,9 +168,9 @@ function setupFilters() {
   $("yearMax").addEventListener("input", handleYearInput);
   $("searchInput").addEventListener("input", (event) => { state.search = event.target.value.trim().toLowerCase(); applyFilters(); });
   $("showExternal").addEventListener("change", (event) => { state.showExternal = event.target.checked; applyFilters(); });
-  $("showLabels").addEventListener("change", (event) => { state.showLabels = event.target.checked; labelLayer.style("display", state.showLabels ? null : "none"); });
+  $("showLabels").addEventListener("change", (event) => { state.showLabels = event.target.checked; applyLabelVisibility(); });
   $("renderLimit").addEventListener("change", (event) => {
-    state.renderLimit = Math.max(100, Number(event.target.value) || 200);
+    state.renderLimit = Math.max(100, Number(event.target.value) || 100);
     updateDatasetStats();
     applyFilters();
   });
@@ -205,7 +206,7 @@ function handleYearInput() {
 
 function applyFilters() {
   const nodeById = new Map(state.data.nodes.map((node) => [node.id, node]));
-  let visibleIds = new Set(state.data.nodes.filter((node) => {
+  const matchesNode = (node) => {
     const haystack = [node.title, node.venue, ...(node.authors || []), ...(node.topics || [])].join(" ").toLowerCase();
     const matchesSearch = !state.search || haystack.includes(state.search);
     // External foundation nodes can sit outside the time window but remain
@@ -213,7 +214,23 @@ function applyFilters() {
     const matchesYear = node.external || (node.year >= state.yearMin && node.year <= state.yearMax);
     const matchesTopic = !state.activeTopics.size || [...state.activeTopics].every((topic) => node.topics.includes(topic));
     return matchesSearch && matchesYear && matchesTopic && (state.showExternal || !node.external);
-  }).map((node) => node.id));
+  };
+  const matchedNodes = state.data.nodes.filter(matchesNode);
+  state.searchMatchIds = new Set(state.search ? matchedNodes.map((node) => node.id) : []);
+  let visibleIds = new Set(matchedNodes.map((node) => node.id));
+  if (state.search && state.searchMatchIds.size) {
+    // Searching a paper opens its local citation context instead of leaving
+    // only the matching title on the canvas.
+    const relatedIds = new Set(state.searchMatchIds);
+    state.data.edges.forEach((edge) => {
+      if (state.searchMatchIds.has(edge.source)) relatedIds.add(edge.target);
+      if (state.searchMatchIds.has(edge.target)) relatedIds.add(edge.source);
+    });
+    visibleIds = new Set([...relatedIds].filter((id) => {
+      const node = nodeById.get(id);
+      return node && (state.showExternal || !node.external);
+    }));
+  }
   if (state.neighborhoodId) {
     const focus = nodeById.get(state.neighborhoodId);
     if (!focus || (!state.showExternal && focus.external)) {
@@ -248,19 +265,23 @@ function applyFilters() {
   // Keep the visual layer bounded for large snapshots while preserving the
   // full dataset for the eventual API and ingestion pipeline.
   let filteredNodes = state.data.nodes.filter((node) => visibleIds.has(node.id));
-  if (filteredNodes.length > state.renderLimit) {
-    const ranked = [...filteredNodes].sort((a, b) => (b.citations_count || 0) - (a.citations_count || 0));
-    const focus = state.neighborhoodId ? nodeById.get(state.neighborhoodId) : null;
-    filteredNodes = focus
-      ? [focus, ...ranked.filter((node) => node.id !== focus.id).slice(0, state.renderLimit - 1)]
-      : ranked.slice(0, state.renderLimit);
+  const ranked = [...filteredNodes].sort((a, b) => (b.citations_count || 0) - (a.citations_count || 0));
+  const focus = state.neighborhoodId ? nodeById.get(state.neighborhoodId) : null;
+  const pinnedIds = new Set(state.searchMatchIds);
+  if (focus) pinnedIds.add(focus.id);
+  if (filteredNodes.length > state.renderLimit || pinnedIds.size) {
+    const pinned = ranked.filter((node) => pinnedIds.has(node.id));
+    const remainder = ranked.filter((node) => !pinnedIds.has(node.id));
+    filteredNodes = [...pinned, ...remainder].slice(0, state.renderLimit);
   }
   const finalIds = new Set(filteredNodes.map((node) => node.id));
   const filteredEdges = state.data.edges.filter((edge) => finalIds.has(edge.source) && finalIds.has(edge.target));
   state.filteredNodes = filteredNodes; state.filteredEdges = filteredEdges;
   if (state.selectedId && !finalIds.has(state.selectedId)) state.selectedId = null;
   if (state.neighborhoodId && !finalIds.has(state.neighborhoodId)) state.neighborhoodId = null;
-  const matchCount = [...visibleIds].filter((id) => !nodeById.get(id)?.external).length;
+  const matchCount = state.search
+    ? [...state.searchMatchIds].filter((id) => !nodeById.get(id)?.external).length
+    : [...visibleIds].filter((id) => !nodeById.get(id)?.external).length;
   $("resultCount").textContent = formatCount(matchCount);
   $("paperStat").textContent = filteredNodes.length;
   $("edgeStat").textContent = filteredEdges.length;
@@ -273,9 +294,28 @@ function applyFilters() {
   $("emptyState").hidden = filteredNodes.length > 0;
   $("viewSummary").textContent = state.neighborhoodId
     ? `${state.neighborhoodDepth} 跳邻域 · ${filteredNodes.length} 个节点`
-    : (state.search || state.activeTopics.size ? `${filteredNodes.length} 个匹配节点` : `全量 ${formatCount(state.stats.nodes)} · 画布 ${filteredNodes.length}`);
+    : (state.search
+      ? `${formatCount(state.searchMatchIds.size)} 个匹配 · ${filteredNodes.length} 个相关节点`
+      : (state.activeTopics.size ? `${filteredNodes.length} 个匹配节点` : `全量 ${formatCount(state.stats.nodes)} · 画布 ${filteredNodes.length}`));
   renderGraph();
   renderDetails(state.selectedId ? state.data.nodes.find((node) => node.id === state.selectedId) : null);
+}
+
+function labelIdsForView() {
+  const ids = new Set();
+  if (!state.search && !state.neighborhoodId) return ids;
+  const ranked = [...state.filteredNodes].sort((a, b) => (b.citations_count || 0) - (a.citations_count || 0));
+  if (state.searchMatchIds.size) {
+    ranked.filter((node) => state.searchMatchIds.has(node.id)).slice(0, 4).forEach((node) => ids.add(node.id));
+  }
+  if (state.selectedId) ids.add(state.selectedId);
+  ranked.filter((node) => !ids.has(node.id)).slice(0, 10).forEach((node) => ids.add(node.id));
+  return ids;
+}
+
+function applyLabelVisibility() {
+  const labelIds = labelIdsForView();
+  labelLayer.selectAll("text").style("display", (node) => state.showLabels && labelIds.has(node.id) ? null : "none");
 }
 
 function renderGraph() {
@@ -310,6 +350,7 @@ function renderGraph() {
   const labelSelection = labelLayer.selectAll("text").data(nodes, (node) => node.id);
   labelSelection.exit().remove();
   labelSelection.enter().append("text").attr("class", "node-label").merge(labelSelection).text((node) => shortTitle(node.title)).classed("active", (node) => state.selectedId === node.id);
+  applyLabelVisibility();
   svg.on("click", () => { state.selectedId = null; renderGraph(); renderDetails(null); });
   if (state.simulation) state.simulation.stop();
   state.simulation = d3.forceSimulation(nodes).force("link", d3.forceLink(edges).id((node) => node.id).distance((edge) => edge.source.external || edge.target.external ? 110 : 88).strength(.55)).force("charge", d3.forceManyBody().strength((node) => node.external ? -70 : -150)).force("center", d3.forceCenter(state.width / 2, state.height / 2)).force("collide", d3.forceCollide().radius((node) => node.external ? 10 : 15)).on("tick", () => {
@@ -394,7 +435,7 @@ function fitGraph() {
   svg.transition().duration(450).call(state.zoom.transform, d3.zoomIdentity.translate(tx, ty).scale(scale));
 }
 
-function resetView() { state.selectedId = null; state.neighborhoodId = null; state.neighborhoodDepth = 1; state.search = ""; $("searchInput").value = ""; state.activeTopics.clear(); document.querySelectorAll(".topic-chip").forEach((chip) => { chip.classList.remove("active"); chip.setAttribute("aria-pressed", "false"); }); $("showExternal").checked = true; state.showExternal = true; state.renderLimit = 200; $("renderLimit").value = "200"; $("neighborhoodDepth").value = "1"; $("yearMin").value = state.yearMin; $("yearMax").value = state.yearMax; $("yearValue").textContent = `${state.yearMin} — ${state.yearMax}`; updateDatasetStats(); applyFilters(); }
+function resetView() { state.selectedId = null; state.neighborhoodId = null; state.neighborhoodDepth = 1; state.search = ""; $("searchInput").value = ""; state.activeTopics.clear(); document.querySelectorAll(".topic-chip").forEach((chip) => { chip.classList.remove("active"); chip.setAttribute("aria-pressed", "false"); }); $("showExternal").checked = true; state.showExternal = true; state.renderLimit = 100; $("renderLimit").value = "100"; $("neighborhoodDepth").value = "1"; $("yearMin").value = state.yearMin; $("yearMax").value = state.yearMax; $("yearValue").textContent = `${state.yearMin} — ${state.yearMax}`; updateDatasetStats(); applyFilters(); }
 function topicIndex(node) { const topic = (node.topics || [])[0] || ""; return Math.abs(hash(topic)) % 4; }
 function hash(text) { return [...String(text)].reduce((sum, char) => ((sum << 5) - sum + char.charCodeAt(0)) | 0, 0); }
 function shortTitle(title) { return title.length > 26 ? `${title.slice(0, 25)}…` : title; }

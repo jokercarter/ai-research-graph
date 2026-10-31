@@ -66,10 +66,11 @@
           <div class="filter-group compact-group">
             <div class="filter-label-row"><span>图谱范围</span></div>
             <label class="toggle-row"><input id="showExternal" type="checkbox" checked /><span class="toggle"></span><span>显示外部引用节点</span></label>
-            <label class="toggle-row"><input id="showLabels" type="checkbox" checked /><span class="toggle"></span><span>显示论文标签</span></label>
+            <label class="toggle-row"><input id="showLabels" type="checkbox" checked /><span class="toggle"></span><span>显示相关标签</span></label>
             <label class="select-row" for="renderLimit">
               <span>画布节点上限</span>
               <select id="renderLimit" class="select-control" aria-label="画布节点上限">
+                <option value="100">100</option>
                 <option value="200">200</option>
                 <option value="500">500</option>
                 <option value="1000">1,000</option>
@@ -97,10 +98,10 @@
             <div class="toolbar-copy">
               <p class="section-kicker">引用网络 · 有向图</p>
               <h2>研究演化地图</h2>
-              <p>沿着真实引用边，观察方法如何从基础论文扩散到后续研究。</p>
+              <p>初始显示引用量最高的论文；搜索后展开相关引用节点。</p>
             </div>
             <div class="toolbar-actions">
-              <span class="canvas-coverage" id="canvasCoverage" aria-live="polite">渲染 0 / 全量 0 · 上限 200</span>
+              <span class="canvas-coverage" id="canvasCoverage" aria-live="polite">渲染 0 / 全量 0 · 上限 100</span>
               <button class="ghost-button neighborhood-toggle" id="neighborhoodToggle" type="button" hidden>退出邻域</button>
               <button class="icon-button" id="zoomOut" type="button" aria-label="缩小">−</button>
               <button class="icon-button" id="zoomIn" type="button" aria-label="放大">+</button>
