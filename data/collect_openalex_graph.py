@@ -13,6 +13,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import sys
 import time
 from datetime import datetime, timezone
@@ -125,12 +126,13 @@ def normalise_work(work: dict[str, Any], *, external: bool = False) -> dict[str,
         if not candidate:
             continue
         lower = str(candidate).lower()
-        marker = "arxiv."
-        if marker in lower:
-            arxiv_id = str(candidate)[lower.index(marker) + len(marker) :].split("/", 1)[0].split("?", 1)[0]
+        abs_match = re.search(r"arxiv\.org/(?:abs|pdf)/([^/?#]+)", lower)
+        if abs_match:
+            arxiv_id = abs_match.group(1).removesuffix(".pdf")
             break
-        if "arxiv.org/abs/" in lower:
-            arxiv_id = str(candidate).split("arxiv.org/abs/", 1)[1].split("/", 1)[0].split("?", 1)[0]
+        doi_match = re.search(r"arxiv\.([0-9]{4}\.[0-9]{4,5}(?:v[0-9]+)?)", lower)
+        if doi_match:
+            arxiv_id = doi_match.group(1)
             break
     topics = []
     for topic in (work.get("topics") or [])[:5]:

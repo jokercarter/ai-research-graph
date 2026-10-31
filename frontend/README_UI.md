@@ -1,6 +1,6 @@
 # AI Research Graph 前端原型
 
-这是一个不依赖构建工具的静态前端原型，打开 `index.html` 即可查看界面。默认的 `data.sample.json` 是由近年 AI/CS 种子沿 `referenced_works` 递归扩展得到的真实 OpenAlex 快照（当前 3,191 个节点、5,109 条有向引用边），用于验证端到端图谱体验；它不是近十年论文的全量索引。为了让 `fetch("data.sample.json")` 在浏览器中工作，建议在 `frontend/` 目录启动任意静态文件服务器，例如：
+这是一个不依赖构建工具的静态前端原型，打开 `index.html` 即可查看界面。默认的 `data.sample.json` 是由近年 AI/CS 种子沿 `referenced_works` 递归扩展得到的真实 OpenAlex 快照（当前 7,916 个节点、33,031 条有向引用边），用于验证端到端图谱体验；它不是近十年论文的全量索引。为了让 `fetch("data.sample.json")` 在浏览器中工作，建议在 `frontend/` 目录启动任意静态文件服务器，例如：
 
 ```powershell
 python -m http.server 4173

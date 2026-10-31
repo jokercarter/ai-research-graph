@@ -2,7 +2,7 @@
 
 This directory contains the reproducible data path for the AI Research Graph website.
 
-The current website snapshot is `recursive_graph_1000.json`: a 3,191-work OpenAlex graph with 5,109 directed citation edges, built from 704 recent seeds plus 2,487 first-layer `referenced_works` results. `ai_cs_graph_expanded.json` remains a merged multi-query slice, and `sample_graph.json` remains the smaller smoke-test fixture.
+The current website snapshot is `recursive_graph_10000.json`: a 7,916-work OpenAlex graph with 33,031 directed citation edges, built from 704 recent seeds plus two layers of `referenced_works` expansion. `recursive_graph_1000.json` remains the smaller first-layer snapshot, `ai_cs_graph_expanded.json` remains a merged multi-query slice, and `sample_graph.json` remains the smoke-test fixture.
 
 ## What is authoritative
 
@@ -57,12 +57,12 @@ Generate a large graph:
 
 ```powershell
 python data/collect_recursive_graph.py `
-  --target-nodes 1000 `
-  --max-depth 2 `
-  --include-out-of-window `
-  --out data/recursive_graph.json
+  --target-nodes 7500 `
+  --seed-per-page 200 --seed-limit 1000 `
+  --max-depth 2 --max-fetch-per-layer 6000 `
+  --out data/recursive_graph_10000.json
 ```
 
-The checked-in/generated `data/recursive_graph_1000.json` is a real run of the collector: it contains 3,191 in-window nodes and 5,109 directed citation edges (704 recent seeds plus 2,487 first-layer references). Counts can change when OpenAlex updates its index or when the seed query/window is changed.
+The checked-in/generated `data/recursive_graph_10000.json` is a real run of the collector: it contains 7,916 in-window nodes and 33,031 directed citation edges (704 recent seeds, 3,480 first-layer nodes, and 3,732 second-layer nodes). Counts can change when OpenAlex updates its index or when the seed query/window is changed.
 
 The output records `graph_depth`, `is_seed`, `in_window`, `window_start`, `window_end`, `parent_count`, per-node provenance, and edge provenance. `stats.layers` reports how many references were requested and hydrated at every expansion depth. Edges are emitted only when both endpoint records were fetched; incomplete reference hydration is reflected in the layer statistics rather than being presented as a citation fact.

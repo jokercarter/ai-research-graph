@@ -15,7 +15,7 @@ python -m http.server 4173
 
 ## 更新论文数据
 
-默认样本为真实 OpenAlex 数据，当前为 3,191 个论文节点、5,109 条有向引用边的递归快照（704 个近期种子 + 2,487 个第一层引用论文）。网站保留完整数据，但画布默认最多渲染 200 个节点以保持交互流畅。采集脚本支持按搜索词、年份和分页扩展：
+默认样本为真实 OpenAlex 数据，当前为 7,916 个论文节点、33,031 条有向引用边的两层递归快照（704 个近期种子 + 3,480 个第一层节点 + 3,732 个第二层节点）。网站保留完整数据，但画布默认最多渲染 200 个节点以保持交互流畅。采集脚本支持按搜索词、年份和分页扩展：
 
 ```powershell
 python data/collect_openalex_graph.py `
@@ -28,9 +28,9 @@ python data/collect_openalex_graph.py `
 
 ```powershell
 python data/collect_recursive_graph.py `
-  --target-nodes 1000 --seed-per-page 200 --seed-limit 1000 `
-  --max-depth 1 --max-fetch-per-layer 4000 `
-  --out data/recursive_graph_1000.json
+  --target-nodes 7500 --seed-per-page 200 --seed-limit 1000 `
+  --max-depth 2 --max-fetch-per-layer 6000 `
+  --out data/recursive_graph_10000.json
 ```
 
 如需合并多个主题切片，也可以使用：
