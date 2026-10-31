@@ -173,7 +173,6 @@ kbd { padding: 2px 5px; border: 1px solid var(--border); border-radius: 4px; col
 .footer-note { text-align: right; }
 
 .node-label { fill: #a7b4c8; font-size: 9px; pointer-events: none; }
-.node, .node-circle, .domain-node, .domain-circle { pointer-events: all; }
 .node-label.active { fill: #fff; font-weight: 600; }
 .node:focus-visible { outline: none; }
 .node:focus-visible .node-circle { stroke: #fff; stroke-width: 2.5; filter: drop-shadow(0 0 8px rgba(123, 226, 255, .85)); }
