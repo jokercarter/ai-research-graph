@@ -202,6 +202,7 @@ def main() -> int:
             "citationcs_sources": [path for path, _ in citationcs_payloads],
             "citationcs_dataset_nodes": sum(int((payload.get("meta") or {}).get("dataset_total_records") or 0) for _, payload in citationcs_payloads),
             "citationcs_dataset_edges": sum(int((payload.get("meta") or {}).get("dataset_internal_citations") or 0) for _, payload in citationcs_payloads),
+            "citationcs_window_cs_nodes": sum(int((payload.get("coverage") or {}).get("dataset_window_cs_records") or 0) for _, payload in citationcs_payloads),
             "citationcs_sample_count": len(citationcs_ids),
             "citationcs_new_nodes_in_union": len(new_citationcs_ids),
             "is_exhaustive": False,
