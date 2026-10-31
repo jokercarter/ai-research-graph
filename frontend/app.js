@@ -17,6 +17,7 @@ const state = {
   filteredEdges: [],
   selectedId: null,
   neighborhoodId: null,
+  neighborhoodDepth: 1,
   activeTopics: new Set(),
   yearMin: 2016,
   yearMax: 2026,
@@ -145,7 +146,7 @@ function updateDatasetStats() {
     coverageNotes.push(`CitationCS 子图 ${formatCount(coverage.citationcsSampleCount)} / ${label} ${formatCount(denominator)} 篇`);
   }
   const coverageNote = coverageNotes.length ? `；${coverageNotes.join("；")}` : "";
-  $("datasetNote").textContent = `完整快照 ${formatCount(state.stats.nodes)} 节点 / ${formatCount(state.stats.edges)} 边${timestamp}${coverageNote}；这是可追溯的有限样本，画布是受限子图，最多渲染 ${formatCount(state.renderLimit)} 个节点，可用搜索或一跳邻域查看局部关系。`;
+  $("datasetNote").textContent = `完整快照 ${formatCount(state.stats.nodes)} 节点 / ${formatCount(state.stats.edges)} 边${timestamp}${coverageNote}；这是可追溯的有限样本，画布是受限子图，最多渲染 ${formatCount(state.renderLimit)} 个节点，可用搜索或 ${state.neighborhoodDepth} 跳邻域继续展开关系。`;
 }
 
 function formatCount(value) {
@@ -171,6 +172,12 @@ function setupFilters() {
     state.renderLimit = Math.max(100, Number(event.target.value) || 200);
     updateDatasetStats();
     applyFilters();
+  });
+  $("neighborhoodDepth").addEventListener("change", (event) => {
+    state.neighborhoodDepth = Math.min(3, Math.max(1, Number(event.target.value) || 1));
+    updateDatasetStats();
+    if (state.neighborhoodId) applyFilters();
+    else if (state.selectedId) renderDetails(state.data.nodes.find((node) => node.id === state.selectedId));
   });
   $("clearTopics").addEventListener("click", () => { state.activeTopics.clear(); document.querySelectorAll(".topic-chip").forEach((chip) => { chip.classList.remove("active"); chip.setAttribute("aria-pressed", "false"); }); applyFilters(); });
   document.querySelectorAll(".topic-chip").forEach((chip) => chip.addEventListener("click", () => {
@@ -213,12 +220,25 @@ function applyFilters() {
       state.neighborhoodId = null;
     } else {
       // A neighborhood view intentionally relaxes the text/year filters for
-      // adjacent nodes so a search result can be followed into its citations.
+      // adjacent nodes so a search result can be followed through several
+      // citation layers without leaving the current paper context.
       const neighborhoodIds = new Set([state.neighborhoodId]);
-      state.data.edges.forEach((edge) => {
-        if (edge.source === state.neighborhoodId) neighborhoodIds.add(edge.target);
-        if (edge.target === state.neighborhoodId) neighborhoodIds.add(edge.source);
-      });
+      let frontier = new Set([state.neighborhoodId]);
+      for (let depth = 0; depth < state.neighborhoodDepth && frontier.size; depth += 1) {
+        const candidates = new Set();
+        state.data.edges.forEach((edge) => {
+          if (frontier.has(edge.source)) candidates.add(edge.target);
+          if (frontier.has(edge.target)) candidates.add(edge.source);
+        });
+        const nextFrontier = new Set();
+        candidates.forEach((id) => {
+          if (!neighborhoodIds.has(id)) {
+            neighborhoodIds.add(id);
+            nextFrontier.add(id);
+          }
+        });
+        frontier = nextFrontier;
+      }
       visibleIds = new Set([...neighborhoodIds].filter((id) => {
         const node = nodeById.get(id);
         return node && (state.showExternal || !node.external);
@@ -245,14 +265,14 @@ function applyFilters() {
   $("paperStat").textContent = filteredNodes.length;
   $("edgeStat").textContent = filteredEdges.length;
   $("canvasCoverage").textContent = state.neighborhoodId
-    ? `邻域渲染 ${filteredNodes.length} / 全量 ${formatCount(state.stats.nodes)} · 上限 ${formatCount(state.renderLimit)}`
+    ? `${state.neighborhoodDepth} 跳邻域渲染 ${filteredNodes.length} / 全量 ${formatCount(state.stats.nodes)} · 上限 ${formatCount(state.renderLimit)}`
     : `渲染 ${filteredNodes.length} / 全量 ${formatCount(state.stats.nodes)} · 上限 ${formatCount(state.renderLimit)}`;
   $("neighborhoodToggle").hidden = !state.neighborhoodId;
   $("neighborhoodButton").hidden = !state.selectedId;
-  $("neighborhoodButton").textContent = state.neighborhoodId ? "退出 1 跳邻域" : "在图中查看 1 跳邻域";
+  $("neighborhoodButton").textContent = state.neighborhoodId ? "退出邻域" : `在图中查看 ${state.neighborhoodDepth} 跳邻域`;
   $("emptyState").hidden = filteredNodes.length > 0;
   $("viewSummary").textContent = state.neighborhoodId
-    ? `1 跳邻域 · ${filteredNodes.length} 个节点`
+    ? `${state.neighborhoodDepth} 跳邻域 · ${filteredNodes.length} 个节点`
     : (state.search || state.activeTopics.size ? `${filteredNodes.length} 个匹配节点` : `全量 ${formatCount(state.stats.nodes)} · 画布 ${filteredNodes.length}`);
   renderGraph();
   renderDetails(state.selectedId ? state.data.nodes.find((node) => node.id === state.selectedId) : null);
@@ -341,7 +361,7 @@ function renderDetails(node) {
   if (!node) { $("detailsEmpty").hidden = false; $("detailsContent").hidden = true; $("neighborhoodButton").hidden = true; return; }
   $("detailsEmpty").hidden = true; $("detailsContent").hidden = false;
   $("neighborhoodButton").hidden = false;
-  $("neighborhoodButton").textContent = state.neighborhoodId ? "退出 1 跳邻域" : "在图中查看 1 跳邻域";
+  $("neighborhoodButton").textContent = state.neighborhoodId ? "退出邻域" : `在图中查看 ${state.neighborhoodDepth} 跳邻域`;
   $("detailYear").textContent = node.year;
   $("detailTitle").textContent = node.title;
   $("detailVenue").textContent = [node.venue, node.external ? "外部引用节点" : "收录论文"].filter(Boolean).join(" · ");
@@ -374,7 +394,7 @@ function fitGraph() {
   svg.transition().duration(450).call(state.zoom.transform, d3.zoomIdentity.translate(tx, ty).scale(scale));
 }
 
-function resetView() { state.selectedId = null; state.neighborhoodId = null; state.search = ""; $("searchInput").value = ""; state.activeTopics.clear(); document.querySelectorAll(".topic-chip").forEach((chip) => { chip.classList.remove("active"); chip.setAttribute("aria-pressed", "false"); }); $("showExternal").checked = true; state.showExternal = true; state.renderLimit = 200; $("renderLimit").value = "200"; $("yearMin").value = state.yearMin; $("yearMax").value = state.yearMax; $("yearValue").textContent = `${state.yearMin} — ${state.yearMax}`; updateDatasetStats(); applyFilters(); }
+function resetView() { state.selectedId = null; state.neighborhoodId = null; state.neighborhoodDepth = 1; state.search = ""; $("searchInput").value = ""; state.activeTopics.clear(); document.querySelectorAll(".topic-chip").forEach((chip) => { chip.classList.remove("active"); chip.setAttribute("aria-pressed", "false"); }); $("showExternal").checked = true; state.showExternal = true; state.renderLimit = 200; $("renderLimit").value = "200"; $("neighborhoodDepth").value = "1"; $("yearMin").value = state.yearMin; $("yearMax").value = state.yearMax; $("yearValue").textContent = `${state.yearMin} — ${state.yearMax}`; updateDatasetStats(); applyFilters(); }
 function topicIndex(node) { const topic = (node.topics || [])[0] || ""; return Math.abs(hash(topic)) % 4; }
 function hash(text) { return [...String(text)].reduce((sum, char) => ((sum << 5) - sum + char.charCodeAt(0)) | 0, 0); }
 function shortTitle(title) { return title.length > 26 ? `${title.slice(0, 25)}…` : title; }
