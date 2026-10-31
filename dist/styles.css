@@ -117,6 +117,7 @@ kbd { padding: 2px 5px; border: 1px solid var(--border); border-radius: 4px; col
 .legend-line { width: 18px; height: 1px; position: relative; background: var(--cyan); }
 .legend-line::after { content: ""; position: absolute; right: -1px; top: -3px; border-top: 3px solid transparent; border-bottom: 3px solid transparent; border-left: 5px solid var(--cyan); }
 .legend-node { width: 8px; height: 8px; display: inline-block; border-radius: 50%; background: var(--cyan); box-shadow: 0 0 8px rgba(123, 226, 255, .75); }
+.legend-node.frontier { width: 11px; height: 11px; background: #ffd166; box-shadow: 0 0 12px rgba(255, 209, 102, .9); }
 .legend-node.external { background: var(--faint); box-shadow: none; }
 .empty-state { position: absolute; inset: 0; display: grid; align-content: center; justify-items: center; pointer-events: none; text-align: center; }
 .empty-state[hidden] { display: none; }
@@ -182,6 +183,7 @@ kbd { padding: 2px 5px; border: 1px solid var(--border); border-radius: 4px; col
 .node-circle.core.topic-3 { fill: #b77c4d; }
 .node-circle.external { fill: #2b3548; stroke: rgba(138, 155, 183, .28); }
 .node-circle.selected { stroke: #fff; stroke-width: 2; filter: drop-shadow(0 0 7px rgba(123, 226, 255, .7)); }
+.node-circle.core.frontier { fill: #ffd166; stroke: #fff1b8; stroke-width: 2.2; filter: drop-shadow(0 0 9px rgba(255, 209, 102, .85)); }
 .link { stroke: rgba(123, 226, 255, .28); stroke-width: 1; fill: none; marker-end: url(#arrow); transition: opacity .18s ease, stroke .18s ease; }
 .link.incoming { stroke: rgba(189, 150, 255, .38); }
 .link.highlighted { stroke: var(--cyan); stroke-width: 1.6; opacity: .95; }

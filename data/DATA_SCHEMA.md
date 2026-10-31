@@ -10,7 +10,7 @@ The current website snapshot is `ai_cs_graph_citationcs_60000.json.gz`: a 56,832
 
 The output JSON has:
 
-- `nodes`: paper metadata, stable OpenAlex ID, optional DOI/arXiv link, topic and author summaries.
+- `nodes`: paper metadata, stable OpenAlex ID, optional DOI/arXiv link, topic and author summaries. Optional `awards`, `award`, or `is_award` fields can carry a verified conference/journal award signal for frontier marking.
 - `edges`: directed citation facts with `source`, `target`, `relation: "cites"`, and provenance fields.
 - `scope`, `query`, `stats`, `generated_at`: reproducibility and coverage metadata.
 

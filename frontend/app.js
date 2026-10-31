@@ -29,6 +29,8 @@ const state = {
   zoom: null,
   simulation: null,
   renderNodes: [],
+  frontierIds: new Set(),
+  frontierAwardIds: new Set(),
   width: 0,
   height: 0
 };
@@ -277,6 +279,7 @@ function applyFilters() {
   const finalIds = new Set(filteredNodes.map((node) => node.id));
   const filteredEdges = state.data.edges.filter((edge) => finalIds.has(edge.source) && finalIds.has(edge.target));
   state.filteredNodes = filteredNodes; state.filteredEdges = filteredEdges;
+  state.frontierIds = computeFrontierIds(filteredNodes, visibleIds);
   if (state.selectedId && !finalIds.has(state.selectedId)) state.selectedId = null;
   if (state.neighborhoodId && !finalIds.has(state.neighborhoodId)) state.neighborhoodId = null;
   const matchCount = state.search
@@ -285,9 +288,10 @@ function applyFilters() {
   $("resultCount").textContent = formatCount(matchCount);
   $("paperStat").textContent = filteredNodes.length;
   $("edgeStat").textContent = filteredEdges.length;
+  const frontierNote = state.frontierIds.size ? ` · 前沿 ${formatCount(state.frontierIds.size)}` : "";
   $("canvasCoverage").textContent = state.neighborhoodId
-    ? `${state.neighborhoodDepth} 跳邻域渲染 ${filteredNodes.length} / 全量 ${formatCount(state.stats.nodes)} · 上限 ${formatCount(state.renderLimit)}`
-    : `渲染 ${filteredNodes.length} / 全量 ${formatCount(state.stats.nodes)} · 上限 ${formatCount(state.renderLimit)}`;
+    ? `${state.neighborhoodDepth} 跳邻域渲染 ${filteredNodes.length} / 全量 ${formatCount(state.stats.nodes)} · 上限 ${formatCount(state.renderLimit)}${frontierNote}`
+    : `渲染 ${filteredNodes.length} / 全量 ${formatCount(state.stats.nodes)} · 上限 ${formatCount(state.renderLimit)}${frontierNote}`;
   $("neighborhoodToggle").hidden = !state.neighborhoodId;
   $("neighborhoodButton").hidden = !state.selectedId;
   $("neighborhoodButton").textContent = state.neighborhoodId ? "退出邻域" : `在图中查看 ${state.neighborhoodDepth} 跳邻域`;
@@ -299,6 +303,41 @@ function applyFilters() {
       : (state.activeTopics.size ? `${filteredNodes.length} 个匹配节点` : `全量 ${formatCount(state.stats.nodes)} · 画布 ${filteredNodes.length}`));
   renderGraph();
   renderDetails(state.selectedId ? state.data.nodes.find((node) => node.id === state.selectedId) : null);
+}
+
+function hasAwardSignal(node) {
+  if (node.is_award === true || node.award === true) return true;
+  const values = [node.awards, node.award, node.award_info, node.recognition].flatMap((value) => Array.isArray(value) ? value : [value]).filter(Boolean);
+  const text = values.map((value) => typeof value === "string" ? value : JSON.stringify(value)).join(" ");
+  return /(best paper|best student paper|outstanding paper|test of time|paper award|最佳论文|最佳学生论文|杰出论文|时间考验奖)/i.test(text);
+}
+
+function topologicalFrontierIds(candidates, clusterIds) {
+  const ids = new Set(candidates.map((node) => node.id));
+  const indegree = new Map(candidates.map((node) => [node.id, 0]));
+  state.data.edges.forEach((edge) => {
+    if (clusterIds.has(edge.source) && ids.has(edge.source) && ids.has(edge.target)) {
+      indegree.set(edge.target, (indegree.get(edge.target) || 0) + 1);
+    }
+  });
+  const firstLayer = candidates.filter((node) => indegree.get(node.id) === 0);
+  const fallback = [...candidates].sort((a, b) => (b.year || 0) - (a.year || 0) || (b.citations_count || 0) - (a.citations_count || 0));
+  return (firstLayer.length ? firstLayer : fallback).sort((a, b) => (b.year || 0) - (a.year || 0) || (b.citations_count || 0) - (a.citations_count || 0));
+}
+
+function computeFrontierIds(nodes, visibleIds) {
+  const visibleNodeIds = new Set(nodes.map((node) => node.id));
+  const clusterIds = visibleIds || visibleNodeIds;
+  const clusterCandidates = state.data.nodes.filter((node) => clusterIds.has(node.id) && !node.external);
+  const awardCandidates = clusterCandidates.filter(hasAwardSignal);
+  state.frontierAwardIds = new Set(awardCandidates.filter((node) => visibleNodeIds.has(node.id)).map((node) => node.id));
+  const hasClusterContext = Boolean(state.search || state.neighborhoodId || state.activeTopics.size);
+  const topological = hasClusterContext && clusterCandidates.length > 20
+    ? topologicalFrontierIds(clusterCandidates, clusterIds)
+    : [];
+  const limit = Math.min(12, Math.max(4, Math.ceil(clusterCandidates.length * 0.1)));
+  const ordered = [...state.frontierAwardIds, ...topological.map((node) => node.id)];
+  return new Set(ordered.filter((id, index, list) => list.indexOf(id) === index && visibleNodeIds.has(id)).slice(0, limit));
 }
 
 function labelIdsForView() {
@@ -318,6 +357,18 @@ function applyLabelVisibility() {
   labelLayer.selectAll("text").style("display", (node) => state.showLabels && labelIds.has(node.id) ? null : "none");
 }
 
+function nodeRadius(node) {
+  if (node.external) return 4;
+  const base = Math.min(10, 5 + ((node.citations_count || 0) / 30));
+  return state.frontierIds.has(node.id) ? Math.min(15, base + 3) : base;
+}
+
+function nodeDescriptor(node) {
+  if (node.external) return "外部引用节点";
+  if (state.frontierAwardIds.has(node.id)) return "获奖前沿论文";
+  return state.frontierIds.has(node.id) ? "前沿论文" : "收录论文";
+}
+
 function renderGraph() {
   const rect = graphPanel.getBoundingClientRect();
   state.width = Math.max(400, rect.width); state.height = Math.max(560, rect.height);
@@ -335,7 +386,7 @@ function renderGraph() {
   const nodeEnter = nodeSelection.enter().append("g").attr("class", "node")
     .attr("role", "button")
     .attr("tabindex", 0)
-    .attr("aria-label", (node) => `${node.title}，${node.year} 年，点击查看论文详情`)
+    .attr("aria-label", (node) => `${node.title}，${node.year} 年，${nodeDescriptor(node)}，点击查看论文详情`)
     .on("keydown", (event, node) => {
       if (event.key === "Enter" || event.key === " ") {
         event.preventDefault();
@@ -343,10 +394,10 @@ function renderGraph() {
       }
     })
     .call(d3.drag().on("start", dragStart).on("drag", dragged).on("end", dragEnd));
-  nodeEnter.append("circle").attr("class", "node-circle").attr("r", (node) => node.external ? 4 : Math.min(10, 5 + ((node.citations_count || 0) / 30))).on("click", (event, node) => { event.stopPropagation(); selectNode(node.id); });
+  nodeEnter.append("circle").attr("class", "node-circle").attr("r", nodeRadius).on("click", (event, node) => { event.stopPropagation(); selectNode(node.id); });
   const mergedNodes = nodeEnter.merge(nodeSelection);
-  mergedNodes.attr("aria-label", (node) => `${node.title}，${node.year} 年，${node.external ? "外部引用节点" : "收录论文"}，点击查看论文详情`)
-    .select("circle").attr("class", (node) => `node-circle ${node.external ? "external" : `core topic-${topicIndex(node)}`}${state.selectedId === node.id ? " selected" : ""}`);
+  mergedNodes.attr("aria-label", (node) => `${node.title}，${node.year} 年，${nodeDescriptor(node)}，点击查看论文详情`)
+    .select("circle").attr("r", nodeRadius).attr("class", (node) => `node-circle ${node.external ? "external" : `core topic-${topicIndex(node)}${state.frontierIds.has(node.id) ? " frontier" : ""}`}${state.selectedId === node.id ? " selected" : ""}`);
   const labelSelection = labelLayer.selectAll("text").data(nodes, (node) => node.id);
   labelSelection.exit().remove();
   labelSelection.enter().append("text").attr("class", "node-label").merge(labelSelection).text((node) => shortTitle(node.title)).classed("active", (node) => state.selectedId === node.id);
