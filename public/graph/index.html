@@ -44,6 +44,23 @@
             <p class="dataset-note" id="datasetNote">正在读取完整数据统计…</p>
           </div>
 
+          <section class="ai-search-card" aria-labelledby="aiSearchTitle">
+            <div class="ai-search-heading">
+              <div>
+                <p class="section-kicker">OPENAI API</p>
+                <h3 id="aiSearchTitle">AI 搜索论文</h3>
+              </div>
+              <span class="ai-badge">AI</span>
+            </div>
+            <p class="ai-search-copy">用自然语言描述研究问题，AI 会从当前引用图谱中找出最相关的论文。</p>
+            <form class="ai-search-form" id="aiSearchForm">
+              <input id="aiSearchInput" type="search" placeholder="如：视觉语言模型的对齐方法" autocomplete="off" />
+              <button id="aiSearchButton" type="submit">搜索</button>
+            </form>
+            <p class="ai-search-status" id="aiSearchStatus" role="status" aria-live="polite"></p>
+            <div class="ai-search-results" id="aiSearchResults" hidden></div>
+          </section>
+
           <label class="search-box" for="searchInput">
             <span class="search-icon" aria-hidden="true">⌕</span>
             <input id="searchInput" type="search" placeholder="搜索标题、作者、主题" autocomplete="off" />

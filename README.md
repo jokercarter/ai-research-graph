@@ -4,7 +4,7 @@ AI Research Graph 是一个以真实论文引用边为核心的 AI / CS 文献�
 
 ## 运行网站
 
-在项目根目录执行：
+图谱界面源文件仍位于 `frontend/`，可以用静态服务器快速查看 UI：
 
 ```powershell
 cd frontend
@@ -12,6 +12,13 @@ python -m http.server 4173
 ```
 
 打开 `http://localhost:4173/`。前端是 buildless HTML/CSS/JS，使用 D3 CDN 绘制有向图。
+
+Hosted Site 使用 Vinext Worker 提供同源的 `/api/ai-search` 服务端接口。AI 搜索框会把当前快照中的候选论文发送到 OpenAI API 进行语义排序；`OPENAI_API_KEY` 只通过 Sites 的环境变量注入 Worker，不会进入浏览器代码。部署形态的本地构建命令为：
+
+```powershell
+npm ci
+node "$env:USERPROFILE\.codex\plugins\cache\openai-curated-remote\sites\1.1.2\scripts\build-site.mjs"
+```
 
 ## 更新论文数据
 

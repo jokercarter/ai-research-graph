@@ -31,6 +31,10 @@ const state = {
   renderNodes: [],
   frontierIds: new Set(),
   frontierAwardIds: new Set(),
+  aiSearchIds: new Set(),
+  aiResults: [],
+  aiAnswer: "",
+  aiBusy: false,
   width: 0,
   height: 0
 };
@@ -168,7 +172,17 @@ function setupFilters() {
   $("yearMax").min = String(state.yearMin); $("yearMax").max = String(state.yearMax); $("yearMax").value = String(state.yearMax);
   $("yearMin").addEventListener("input", handleYearInput);
   $("yearMax").addEventListener("input", handleYearInput);
-  $("searchInput").addEventListener("input", (event) => { state.search = event.target.value.trim().toLowerCase(); applyFilters(); });
+  $("searchInput").addEventListener("input", (event) => {
+    state.search = event.target.value.trim().toLowerCase();
+    if (state.search) {
+      state.aiSearchIds.clear();
+      state.aiResults = [];
+      state.aiAnswer = "";
+      renderAiResults();
+    }
+    applyFilters();
+  });
+  $("aiSearchForm").addEventListener("submit", (event) => { event.preventDefault(); runAiSearch(); });
   $("showExternal").addEventListener("change", (event) => { state.showExternal = event.target.checked; applyFilters(); });
   $("showLabels").addEventListener("change", (event) => { state.showLabels = event.target.checked; applyLabelVisibility(); });
   $("renderLimit").addEventListener("change", (event) => {
@@ -233,6 +247,19 @@ function applyFilters() {
       return node && (state.showExternal || !node.external);
     }));
   }
+  if (state.aiSearchIds.size) {
+    // Keep the AI answer connected to the graph: show the returned papers and
+    // one citation layer around them so the user can continue exploring.
+    const relatedIds = new Set(state.aiSearchIds);
+    state.data.edges.forEach((edge) => {
+      if (state.aiSearchIds.has(edge.source)) relatedIds.add(edge.target);
+      if (state.aiSearchIds.has(edge.target)) relatedIds.add(edge.source);
+    });
+    visibleIds = new Set([...relatedIds].filter((id) => {
+      const node = nodeById.get(id);
+      return node && (state.showExternal || !node.external);
+    }));
+  }
   if (state.neighborhoodId) {
     const focus = nodeById.get(state.neighborhoodId);
     if (!focus || (!state.showExternal && focus.external)) {
@@ -269,7 +296,7 @@ function applyFilters() {
   let filteredNodes = state.data.nodes.filter((node) => visibleIds.has(node.id));
   const ranked = [...filteredNodes].sort((a, b) => (b.citations_count || 0) - (a.citations_count || 0));
   const focus = state.neighborhoodId ? nodeById.get(state.neighborhoodId) : null;
-  const pinnedIds = new Set(state.searchMatchIds);
+  const pinnedIds = new Set([...state.searchMatchIds, ...state.aiSearchIds]);
   if (focus) pinnedIds.add(focus.id);
   if (filteredNodes.length > state.renderLimit || pinnedIds.size) {
     const pinned = ranked.filter((node) => pinnedIds.has(node.id));
@@ -284,7 +311,9 @@ function applyFilters() {
   if (state.neighborhoodId && !finalIds.has(state.neighborhoodId)) state.neighborhoodId = null;
   const matchCount = state.search
     ? [...state.searchMatchIds].filter((id) => !nodeById.get(id)?.external).length
-    : [...visibleIds].filter((id) => !nodeById.get(id)?.external).length;
+    : state.aiSearchIds.size
+      ? [...state.aiSearchIds].filter((id) => !nodeById.get(id)?.external).length
+      : [...visibleIds].filter((id) => !nodeById.get(id)?.external).length;
   $("resultCount").textContent = formatCount(matchCount);
   $("paperStat").textContent = filteredNodes.length;
   $("edgeStat").textContent = filteredEdges.length;
@@ -300,9 +329,119 @@ function applyFilters() {
     ? `${state.neighborhoodDepth} 跳邻域 · ${filteredNodes.length} 个节点`
     : (state.search
       ? `${formatCount(state.searchMatchIds.size)} 个匹配 · ${filteredNodes.length} 个相关节点`
-      : (state.activeTopics.size ? `${filteredNodes.length} 个匹配节点` : `全量 ${formatCount(state.stats.nodes)} · 画布 ${filteredNodes.length}`));
+      : (state.aiSearchIds.size
+        ? `AI 搜索 ${formatCount(state.aiSearchIds.size)} 篇匹配 · ${filteredNodes.length} 个相关节点`
+        : (state.activeTopics.size ? `${filteredNodes.length} 个匹配节点` : `全量 ${formatCount(state.stats.nodes)} · 画布 ${filteredNodes.length}`)));
   renderGraph();
   renderDetails(state.selectedId ? state.data.nodes.find((node) => node.id === state.selectedId) : null);
+}
+
+function aiQueryTerms(query) {
+  const latin = query.toLowerCase().match(/[a-z0-9][a-z0-9+.#-]*/g) || [];
+  const chinese = Array.from(query).filter((char) => /[\u4e00-\u9fff]/.test(char));
+  const grams = [];
+  for (let index = 0; index < chinese.length - 1; index += 1) grams.push(chinese.slice(index, index + 2).join(""));
+  return [...new Set([...latin, ...grams])].filter((term) => term.length >= 2);
+}
+
+function buildAiCandidates(query) {
+  const terms = aiQueryTerms(query);
+  const ranked = state.data.nodes.map((node) => {
+    const title = String(node.title || "").toLowerCase();
+    const text = [node.title, node.venue, ...(node.authors || []), ...(node.topics || []), node.abstract].join(" ").toLowerCase();
+    const lexical = terms.reduce((score, term) => score + (title.includes(term) ? 8 : 0) + (text.includes(term) ? 2 : 0), 0);
+    const citationBoost = Math.log1p(node.citations_count || 0) * 0.22;
+    return { node, score: lexical + citationBoost };
+  }).sort((a, b) => b.score - a.score || (b.node.citations_count || 0) - (a.node.citations_count || 0));
+  const selected = ranked.filter((item) => item.score > 0).slice(0, 64);
+  const selectedIds = new Set(selected.map((item) => item.node.id));
+  ranked.filter((item) => !selectedIds.has(item.node.id)).slice(0, Math.max(0, 80 - selected.length)).forEach((item) => selected.push(item));
+  return selected.slice(0, 80).map(({ node }) => ({
+    id: node.id,
+    title: node.title,
+    year: node.year,
+    venue: node.venue,
+    authors: (node.authors || []).slice(0, 5),
+    topics: (node.topics || []).slice(0, 6),
+    citations_count: node.citations_count || 0,
+    abstract: String(node.abstract || "").slice(0, 420)
+  }));
+}
+
+function renderAiResults() {
+  const status = $("aiSearchStatus");
+  const results = $("aiSearchResults");
+  if (!state.aiResults.length) {
+    results.hidden = true;
+    results.innerHTML = "";
+    return;
+  }
+  results.hidden = false;
+  const answer = state.aiAnswer ? `<p class="ai-search-answer">${escapeHtml(state.aiAnswer)}</p>` : "";
+  const items = state.aiResults.slice(0, 6).map((result) => `
+    <button type="button" class="ai-result" data-ai-result="${escapeHtml(result.id)}">
+      <span class="ai-result-title">${escapeHtml(result.title || "未命名论文")}</span>
+      <span class="ai-result-meta">${escapeHtml([result.year, result.venue, result.reason].filter(Boolean).join(" · "))}</span>
+    </button>`).join("");
+  results.innerHTML = `${answer}<div class="ai-result-list">${items}</div>`;
+  results.querySelectorAll(".ai-result").forEach((item) => item.addEventListener("click", () => {
+    const id = item.dataset.aiResult;
+    if (!id) return;
+    selectNode(id);
+    const node = state.data.nodes.find((candidate) => candidate.id === id);
+    if (node) $("aiSearchStatus").textContent = `已定位：${node.title}`;
+  }));
+  if (status && state.aiAnswer) status.textContent = `AI 找到 ${formatCount(state.aiResults.length)} 篇相关论文`;
+}
+
+async function runAiSearch() {
+  const input = $("aiSearchInput");
+  const button = $("aiSearchButton");
+  const query = input.value.trim();
+  if (query.length < 2 || state.aiBusy) {
+    if (query.length < 2) $("aiSearchStatus").textContent = "请输入至少 2 个字符。";
+    return;
+  }
+  state.aiBusy = true;
+  button.disabled = true;
+  button.textContent = "搜索中…";
+  $("aiSearchStatus").textContent = "AI 正在理解问题并匹配引用图谱…";
+  state.aiSearchIds.clear();
+  state.aiResults = [];
+  state.aiAnswer = "";
+  renderAiResults();
+  try {
+    const response = await fetch("/api/ai-search", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ query, candidates: buildAiCandidates(query) })
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(payload.error || `AI 搜索失败（${response.status}）`);
+    const known = new Set(state.data.nodes.map((node) => node.id));
+    state.aiResults = (payload.results || []).filter((result) => known.has(String(result.id))).slice(0, 8);
+    state.aiSearchIds = new Set(state.aiResults.map((result) => String(result.id)));
+    state.aiAnswer = payload.answer || "";
+    if (!state.aiResults.length) {
+      $("aiSearchStatus").textContent = "没有找到足够匹配的论文，可以换一种描述。";
+      renderAiResults();
+      applyFilters();
+      return;
+    }
+    $("searchInput").value = "";
+    state.search = "";
+    renderAiResults();
+    applyFilters();
+    selectNode(state.aiResults[0].id);
+  } catch (error) {
+    $("aiSearchStatus").textContent = error.message || "AI 搜索暂时不可用。";
+    state.aiSearchIds.clear();
+    applyFilters();
+  } finally {
+    state.aiBusy = false;
+    button.disabled = false;
+    button.textContent = "搜索";
+  }
 }
 
 function hasAwardSignal(node) {
@@ -331,7 +470,7 @@ function computeFrontierIds(nodes, visibleIds) {
   const clusterCandidates = state.data.nodes.filter((node) => clusterIds.has(node.id) && !node.external);
   const awardCandidates = clusterCandidates.filter(hasAwardSignal);
   state.frontierAwardIds = new Set(awardCandidates.filter((node) => visibleNodeIds.has(node.id)).map((node) => node.id));
-  const hasClusterContext = Boolean(state.search || state.neighborhoodId || state.activeTopics.size);
+  const hasClusterContext = Boolean(state.search || state.aiSearchIds.size || state.neighborhoodId || state.activeTopics.size);
   const topological = hasClusterContext && clusterCandidates.length > 20
     ? topologicalFrontierIds(clusterCandidates, clusterIds)
     : [];
@@ -342,10 +481,13 @@ function computeFrontierIds(nodes, visibleIds) {
 
 function labelIdsForView() {
   const ids = new Set();
-  if (!state.search && !state.neighborhoodId) return ids;
+  if (!state.search && !state.aiSearchIds.size && !state.neighborhoodId) return ids;
   const ranked = [...state.filteredNodes].sort((a, b) => (b.citations_count || 0) - (a.citations_count || 0));
   if (state.searchMatchIds.size) {
     ranked.filter((node) => state.searchMatchIds.has(node.id)).slice(0, 4).forEach((node) => ids.add(node.id));
+  }
+  if (state.aiSearchIds.size) {
+    ranked.filter((node) => state.aiSearchIds.has(node.id)).slice(0, 6).forEach((node) => ids.add(node.id));
   }
   if (state.selectedId) ids.add(state.selectedId);
   ranked.filter((node) => !ids.has(node.id)).slice(0, 10).forEach((node) => ids.add(node.id));
@@ -486,7 +628,31 @@ function fitGraph() {
   svg.transition().duration(450).call(state.zoom.transform, d3.zoomIdentity.translate(tx, ty).scale(scale));
 }
 
-function resetView() { state.selectedId = null; state.neighborhoodId = null; state.neighborhoodDepth = 1; state.search = ""; $("searchInput").value = ""; state.activeTopics.clear(); document.querySelectorAll(".topic-chip").forEach((chip) => { chip.classList.remove("active"); chip.setAttribute("aria-pressed", "false"); }); $("showExternal").checked = true; state.showExternal = true; state.renderLimit = 100; $("renderLimit").value = "100"; $("neighborhoodDepth").value = "1"; $("yearMin").value = state.yearMin; $("yearMax").value = state.yearMax; $("yearValue").textContent = `${state.yearMin} — ${state.yearMax}`; updateDatasetStats(); applyFilters(); }
+function resetView() {
+  state.selectedId = null;
+  state.neighborhoodId = null;
+  state.neighborhoodDepth = 1;
+  state.search = "";
+  state.aiSearchIds.clear();
+  state.aiResults = [];
+  state.aiAnswer = "";
+  $("searchInput").value = "";
+  $("aiSearchInput").value = "";
+  $("aiSearchStatus").textContent = "";
+  renderAiResults();
+  state.activeTopics.clear();
+  document.querySelectorAll(".topic-chip").forEach((chip) => { chip.classList.remove("active"); chip.setAttribute("aria-pressed", "false"); });
+  $("showExternal").checked = true;
+  state.showExternal = true;
+  state.renderLimit = 100;
+  $("renderLimit").value = "100";
+  $("neighborhoodDepth").value = "1";
+  $("yearMin").value = state.yearMin;
+  $("yearMax").value = state.yearMax;
+  $("yearValue").textContent = `${state.yearMin} — ${state.yearMax}`;
+  updateDatasetStats();
+  applyFilters();
+}
 function topicIndex(node) { const topic = (node.topics || [])[0] || ""; return Math.abs(hash(topic)) % 4; }
 function hash(text) { return [...String(text)].reduce((sum, char) => ((sum << 5) - sum + char.charCodeAt(0)) | 0, 0); }
 function shortTitle(title) { return title.length > 26 ? `${title.slice(0, 25)}…` : title; }
