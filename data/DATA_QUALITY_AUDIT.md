@@ -2,7 +2,7 @@
 
 ## Website snapshot
 
-The current website uses `data/ai_cs_graph_coverage_9500.json`, a union of the recursive source below and `data/cs_field_catalog_2200.json`. The union contains **9,498 nodes** and **45,287 directed citation edges** after OpenAlex ID de-duplication. It adds **1,582** catalog-only nodes and **11,535** catalog edges that touch those added nodes. The catalog denominator is **5,435,295** works for the exact Computer Science field/type/date filter; the 2,200-work catalog sample is **0.0405%** of that denominator and is marked non-exhaustive.
+The current website uses `data/ai_cs_graph_coverage_10000.json`, a union of the recursive source, `data/cs_field_catalog_2200.json`, and the existing multi-topic AI/CS slice. The union contains **9,871 nodes** and **46,231 directed citation edges** after OpenAlex ID de-duplication. It adds **1,582** catalog-only nodes and **373** topic-slice-only nodes; the catalogue contributes **11,498** unique edges touching catalog additions, and the topic slice contributes **944** additional unique edges. The catalog denominator is **5,435,295** works for the exact Computer Science field/type/date filter; the 2,200-work catalog sample is **0.0405%** of that denominator and is marked non-exhaustive.
 
 The union was validated with no missing edge endpoints, duplicate endpoint pairs, or self-loops. Every edge remains a copied OpenAlex `referenced_works` relation. `coverage.catalog_expected_count`, `coverage.catalog_sample_count`, and `coverage.catalog_sample_fraction` are carried in the JSON so the UI can show the coverage boundary.
 

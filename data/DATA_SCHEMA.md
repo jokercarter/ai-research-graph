@@ -2,7 +2,7 @@
 
 This directory contains the reproducible data path for the AI Research Graph website.
 
-The current website snapshot is `ai_cs_graph_coverage_9500.json`: a 9,498-work OpenAlex graph with 45,287 directed citation edges. It unions the 7,916-work, two-layer recursive graph with a 2,200-work year-balanced Computer Science catalogue sample. `recursive_graph_10000.json` remains the recursive source, `recursive_graph_1000.json` remains the smaller first-layer snapshot, `cs_field_catalog_2200.json` records the auditable field-filtered sample, and `sample_graph.json` remains the smoke-test fixture.
+The current website snapshot is `ai_cs_graph_coverage_10000.json`: a 9,871-work OpenAlex graph with 46,231 directed citation edges. It unions the 7,916-work, two-layer recursive graph with a 2,200-work year-balanced Computer Science catalogue sample and the existing multi-topic AI/CS slice. `recursive_graph_10000.json` remains the recursive source, `recursive_graph_1000.json` remains the smaller first-layer snapshot, `cs_field_catalog_2200.json` records the auditable field-filtered sample, and `sample_graph.json` remains the smoke-test fixture.
 
 ## What is authoritative
 
@@ -73,7 +73,8 @@ The website union is reproducible with:
 python data/merge_recursive_catalog.py `
   --recursive data/recursive_graph_10000.json `
   --catalog data/cs_field_catalog_2200.json `
-  --out data/ai_cs_graph_coverage_9500.json
+  --topic-slice data/ai_cs_graph_expanded.json `
+  --out data/ai_cs_graph_coverage_10000.json
 ```
 
 The union retains `coverage.catalog_expected_count`, `coverage.catalog_sample_count`, and `coverage.catalog_sample_fraction`. It is explicitly marked `meta.is_exhaustive: false`; the denominator is a measurement for planning a larger import, not a claim that the JSON contains every eligible work.

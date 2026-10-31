@@ -2,7 +2,7 @@
 
 ## Scope
 
-This audit compares the existing keyword/recursive collectors with a broader, field-filtered catalogue mode. It uses the current worktree and a live OpenAlex metadata count from the exact roadmap window (`2016-11-01` through `2026-10-31`). The website now uses the reproducible union `ai_cs_graph_coverage_9500.json`, which combines the recursive snapshot with the verified catalogue sample.
+This audit compares the existing keyword/recursive collectors with a broader, field-filtered catalogue mode. It uses the current worktree and a live OpenAlex metadata count from the exact roadmap window (`2016-11-01` through `2026-10-31`). The website now uses the reproducible union `ai_cs_graph_coverage_10000.json`, which combines the recursive snapshot, the verified catalogue sample, and the existing multi-topic AI/CS slice.
 
 ## What the existing collectors actually cover
 

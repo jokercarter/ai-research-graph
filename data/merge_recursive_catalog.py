@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-"""Union a recursive citation graph with a year-balanced CS catalogue slice.
+"""Union recursive, catalogue, and optional topic-slice citation graphs.
 
 The recursive snapshot provides a connected relevance-first view.  The
 catalogue slice adds a deterministic sample from every year in the exact
 Computer Science field/type window and carries its OpenAlex denominator.  The
-union keeps only real OpenAlex ``referenced_works`` edges and is explicit that
-it is a bounded sample rather than an exhaustive import.
+union keeps only real OpenAlex ``referenced_works`` edges and is explicit
+that it is a bounded sample rather than an exhaustive import.
 """
 from __future__ import annotations
 
@@ -21,6 +21,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--recursive", default="data/recursive_graph_10000.json")
     parser.add_argument("--catalog", default="data/cs_field_catalog_2200.json")
+    parser.add_argument("--topic-slice", action="append", default=[], help="Optional topic-slice JSON; repeatable")
     parser.add_argument("--out", default="data/ai_cs_graph_coverage_9500.json")
     return parser.parse_args()
 
@@ -33,6 +34,7 @@ def main() -> int:
     args = parse_args()
     recursive = read_json(args.recursive)
     catalog = read_json(args.catalog)
+    topic_payloads = [(path, read_json(path)) for path in args.topic_slice]
 
     nodes: dict[str, dict[str, Any]] = {}
     for raw in recursive.get("nodes", []):
@@ -69,8 +71,41 @@ def main() -> int:
         nodes[work_id] = node
         new_catalog_ids.add(work_id)
 
+    topic_slice_ids: set[str] = set()
+    new_topic_slice_ids: set[str] = set()
+    for path, topic_payload in topic_payloads:
+        for raw in topic_payload.get("nodes", []):
+            work_id = raw.get("id")
+            if not work_id:
+                continue
+            work_id = str(work_id)
+            topic_slice_ids.add(work_id)
+            if work_id in nodes:
+                nodes[work_id]["topic_slice_membership"] = True
+                nodes[work_id]["topic_slice_seed"] = True
+                nodes[work_id].setdefault("topic_slice_sources", [])
+                if path not in nodes[work_id]["topic_slice_sources"]:
+                    nodes[work_id]["topic_slice_sources"].append(path)
+                continue
+            node = dict(raw)
+            node.update(
+                {
+                    "topic_slice_membership": True,
+                    "topic_slice_seed": True,
+                    "topic_slice_sources": [path],
+                    "graph_depth": 0,
+                    "is_seed": False,
+                    "in_window": True,
+                    "is_external_reference": False,
+                }
+            )
+            nodes[work_id] = node
+            new_topic_slice_ids.add(work_id)
+
     edge_by_key: dict[tuple[str, str], dict[str, Any]] = {}
-    for source_name, payload in (("recursive", recursive), ("catalog", catalog)):
+    edge_sources: list[tuple[str, dict[str, Any]]] = [("recursive", recursive), ("catalog", catalog)]
+    edge_sources.extend((f"topic_slice:{path}", payload) for path, payload in topic_payloads)
+    for source_name, payload in edge_sources:
         for raw in payload.get("edges", []):
             source = str(raw.get("source"))
             target = str(raw.get("target"))
@@ -106,7 +141,7 @@ def main() -> int:
         "generated_at": now,
         "meta": {
             "title": "AI and Computer Science citation graph with coverage sample",
-            "description": "Union of a two-hop OpenAlex citation traversal and a year-balanced Computer Science catalogue sample.",
+            "description": "Union of a two-hop OpenAlex citation traversal, a year-balanced Computer Science catalogue sample, and optional topic slices.",
             "window": {"from": "2016-11-01", "to": "2026-10-31"},
             "is_exhaustive": False,
             "core_publication_types": sorted(core_types),
@@ -117,7 +152,7 @@ def main() -> int:
             "works_endpoint": "https://api.openalex.org/works",
             "citation_field": "referenced_works",
             "edge_semantics": "source work cites target work",
-            "expansion": "recent keyword seeds -> referenced_works -> referenced_works, unioned with yearly Computer Science catalogue slices",
+            "expansion": "recent keyword seeds -> referenced_works -> referenced_works, unioned with yearly Computer Science catalogue slices and optional topic slices",
             "documentation": "https://docs.openalex.org/",
             "no_inferred_edges": True,
         },
@@ -128,11 +163,13 @@ def main() -> int:
             "catalog_new_nodes_in_union": len(new_catalog_ids),
             "catalog_sample_fraction": (len(catalog_ids) / catalog_expected) if catalog_expected else None,
             "catalog_manifest": catalog_coverage.get("slices", []),
+            "topic_slice_sources": [path for path, _ in topic_payloads],
             "is_exhaustive": False,
         },
         "query": {
             "recursive_snapshot": args.recursive,
             "catalog_snapshot": args.catalog,
+            "topic_slice_snapshots": args.topic_slice,
             "recursive_stats": recursive_stats,
             "catalog_stats": catalog.get("stats", {}),
         },
@@ -149,6 +186,9 @@ def main() -> int:
             "recursive_nodes": len(recursive.get("nodes", [])),
             "recursive_edges": len(recursive.get("edges", [])),
             "catalog_edges": len(catalog.get("edges", [])),
+            "topic_slice_nodes": len(topic_slice_ids),
+            "topic_slice_new_nodes": len(new_topic_slice_ids),
+            "topic_slice_edges": sum(len(payload.get("edges", [])) for _, payload in topic_payloads),
         },
         "nodes": list(nodes.values()),
         "edges": list(edge_by_key.values()),
@@ -158,7 +198,8 @@ def main() -> int:
     output.write_text(json.dumps(payload, ensure_ascii=False, separators=(",", ":")) + "\n", encoding="utf-8")
     print(
         f"wrote {output} ({payload['stats']['nodes']} nodes, "
-        f"{payload['stats']['edges']} edges; catalog {len(catalog_ids)} / {catalog_expected})"
+        f"{payload['stats']['edges']} edges; catalog {len(catalog_ids)} / {catalog_expected}; "
+        f"topic slices {len(topic_slice_ids)})"
     )
     return 0
 
