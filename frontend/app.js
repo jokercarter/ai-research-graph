@@ -39,13 +39,14 @@ const state = {
   aiFilters: { year_from: 2016, year_to: 2026, topics: [], publication_types: [], venues: [], min_citations: 0 },
   aiBusy: false,
   compareIds: new Set(),
+  detailRelationMode: "related",
   workspace: null,
   width: 0,
   height: 0
 };
 
 const WORKSPACE_KEY = "ai-research-graph.workspace.v1";
-const DEFAULT_WORKSPACE = { favorites: [], compare: [], notes: {}, read: {}, tags: {}, history: [], savedQueries: [] };
+const DEFAULT_WORKSPACE = { favorites: [], compare: [], notes: {}, read: {}, tags: {}, history: [], savedQueries: [], readingQueue: [], excluded: {}, matrix: {} };
 const AI_MODES = {
   related: "找相关论文",
   review: "梳理文献综述",
@@ -53,6 +54,47 @@ const AI_MODES = {
   gaps: "寻找研究空白",
   frontier: "寻找研究前沿"
 };
+
+// The snapshot is intentionally multilingual and many records do not yet
+// have abstracts. These aliases keep the local fallback useful for the two
+// research questions used in the acceptance checks without pretending that a
+// title match is a semantic proof.
+const QUERY_EXPANSIONS = [
+  { pattern: /视觉语言模型|视觉-语言模型|多模态|vision.?language|multimodal/i, terms: ["vision language model", "vision-language model", "visual language model", "multimodal", "cross-modal"] },
+  { pattern: /对齐方法|模型对齐|alignment|align/i, terms: ["alignment", "align", "cross-modal", "contrastive", "grounding"] },
+  { pattern: /联邦学习|federated/i, terms: ["federated learning", "federated", "federated optimization"] },
+  { pattern: /隐私|privacy|差分隐私|differential/i, terms: ["privacy", "private", "differential privacy", "secure"] },
+  { pattern: /通信效率|通信成本|communication|带宽/i, terms: ["communication efficiency", "communication cost", "communication", "bandwidth", "communication-efficient"] },
+  { pattern: /计算机视觉|视觉识别|computer vision|image classification/i, terms: ["computer vision", "image classification", "visual recognition"] },
+  { pattern: /自然语言处理|文本|natural language|nlp/i, terms: ["natural language processing", "nlp", "text mining", "language model"] },
+  { pattern: /研究空白|gap|缺口/i, terms: ["research gap", "future work", "limitation"] }
+];
+
+function normalizeText(value) {
+  return String(value || "")
+    .replace(/<[^>]*>/g, " ")
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}]+/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function normalizePublicationType(value) {
+  const type = normalizeText(value).replace(/\s+/g, "-");
+  if (["article", "journal", "journal-article"].includes(type)) return "article";
+  if (["conference-paper", "conference", "inproceedings", "proceedings", "proceedings-article"].includes(type)) return "conference-paper";
+  if (["preprint", "posted-content"].includes(type)) return "preprint";
+  if (type === "review") return "review";
+  return type;
+}
+
+function expandQueryTerms(query) {
+  const terms = [...aiQueryTerms(query)];
+  QUERY_EXPANSIONS.forEach((rule) => {
+    if (rule.pattern.test(String(query || ""))) terms.push(...rule.terms);
+  });
+  return [...new Set(terms.map(normalizeText).filter((term) => term.length >= 2))];
+}
 
 function loadWorkspace() {
   try {
@@ -66,7 +108,10 @@ function loadWorkspace() {
       read: stored?.read && typeof stored.read === "object" ? stored.read : {},
       tags: stored?.tags && typeof stored.tags === "object" ? stored.tags : {},
       history: Array.isArray(stored?.history) ? stored.history : [],
-      savedQueries: Array.isArray(stored?.savedQueries) ? stored.savedQueries : []
+      savedQueries: Array.isArray(stored?.savedQueries) ? stored.savedQueries : [],
+      readingQueue: Array.isArray(stored?.readingQueue) ? stored.readingQueue : [],
+      excluded: stored?.excluded && typeof stored.excluded === "object" ? stored.excluded : {},
+      matrix: stored?.matrix && typeof stored.matrix === "object" ? stored.matrix : {}
     };
   } catch {
     return { ...DEFAULT_WORKSPACE };
@@ -79,6 +124,35 @@ function persistWorkspace() {
 
 function workspaceHas(collection, id) {
   return Array.isArray(state.workspace?.[collection]) && state.workspace[collection].includes(String(id));
+}
+
+function queueHas(id) {
+  return Array.isArray(state.workspace?.readingQueue) && state.workspace.readingQueue.includes(String(id));
+}
+
+function excludedReason(id) {
+  return state.workspace?.excluded?.[String(id)] || "";
+}
+
+function toggleReadingQueue(id) {
+  const value = String(id);
+  const queue = state.workspace.readingQueue || [];
+  state.workspace.readingQueue = queue.includes(value) ? queue.filter((item) => item !== value) : [...queue, value];
+  persistWorkspace();
+  updateWorkspaceControls();
+}
+
+function excludePaper(id, reason = "other") {
+  const value = String(id);
+  state.workspace.excluded[value] = reason;
+  state.workspace.readingQueue = (state.workspace.readingQueue || []).filter((item) => item !== value);
+  state.workspace.compare = (state.workspace.compare || []).filter((item) => item !== value);
+  state.compareIds = new Set(state.workspace.compare || []);
+  persistWorkspace();
+  state.aiResults = state.aiResults.filter((result) => String(result.id) !== value);
+  state.aiSearchIds = new Set(state.aiResults.map((result) => String(result.id)));
+  renderAiResults();
+  applyFilters();
 }
 
 function toggleWorkspaceId(collection, id) {
@@ -109,6 +183,11 @@ function normalizeData(raw) {
     if (typeof topic === "string") return topic;
     return topic?.display_name || topic?.name || "";
   }).filter(Boolean);
+  const sourceUpdatedAt = raw?.provenance?.metadata_enrichment?.updated_at || raw?.generated_at || raw?.provenance?.generated_at || "";
+  const completeness = (node) => {
+    const fields = [node.title, node.abstract, node.authors, node.topics, node.venue, node.publication_year ?? node.year, node.cited_by_count ?? node.citations_count, node.url || node.doi];
+    return fields.filter((value) => value !== undefined && value !== null && value !== "" && !(Array.isArray(value) && !value.length)).length / fields.length;
+  };
   const nodes = (raw.nodes || []).map((node) => ({
     ...node,
     id: String(node.id),
@@ -120,8 +199,11 @@ function normalizeData(raw) {
     abstract: node.abstract || "",
     citations_count: Number(node.citations_count ?? node.cited_by_count ?? 0),
     url: node.url || node.open_access_url || node.landing_page_url || node.doi || (node.openalex_id ? `https://openalex.org/${String(node.openalex_id).split("/").pop()}` : ""),
-    metadata_completeness: Number(node.metadata_completeness ?? node.field_completeness ?? 0) || 0,
-    publication_type: node.publication_type || node.type || "",
+    metadata_completeness: Number(node.metadata_completeness ?? node.field_completeness ?? 0) || completeness(node),
+    metadata_updated_at: node.metadata_updated_at || sourceUpdatedAt,
+    metadata_source: Array.isArray(node.metadata_source) ? node.metadata_source : (node.metadata_source ? [node.metadata_source] : []),
+    source_type: node.publication_type || node.type || "",
+    publication_type: normalizePublicationType(node.publication_type || node.type || ""),
     openalex_id: node.openalex_id || node.ids?.openalex || "",
     doi: node.doi || node.ids?.doi || "",
     arxiv_id: node.arxiv_id || node.ids?.arxiv || "",
@@ -172,7 +254,7 @@ async function loadData() {
     state.data = normalizeData(raw);
     state.stats = datasetStats(raw, state.data);
     $("syncStatus").textContent = `${raw.provenance?.provider || "OpenAlex"} · ${formatCount(state.stats.nodes)} 节点 / ${formatCount(state.stats.edges)} 条边`;
-  } catch (error) {
+  } catch {
     state.snapshot = null;
     state.data = normalizeData(FALLBACK_DATA);
     state.stats = datasetStats(null, state.data);
@@ -246,6 +328,35 @@ function formatCount(value) {
   return new Intl.NumberFormat("zh-CN").format(Number(value) || 0);
 }
 
+function buildResearchQuestionPlan(query) {
+  const text = String(query || "").trim();
+  const lower = text.toLowerCase();
+  const terms = expandQueryTerms(text).filter((term) => !/^[\u4e00-\u9fff]{2}$/.test(term)).slice(0, 10);
+  let focus = "研究主题的主要方法、演化和证据";
+  if (/隐私|privacy|安全|secure/i.test(text)) focus = "隐私保护、威胁模型和效果权衡";
+  else if (/对齐|alignment|multimodal|多模态/i.test(text)) focus = "对齐目标、训练方法和评测指标";
+  else if (/数据集|benchmark|基准/i.test(text)) focus = "数据集、基准任务和评价协议";
+  else if (/效率|通信|communication|速度|成本/i.test(text)) focus = "效率、资源开销和可扩展性";
+  const subQuestions = [
+    `核心问题：${text}`,
+    `${focus}分别有哪些代表性工作？`,
+    "不同方法使用了哪些数据集、指标和对比基线？",
+    "哪些结论已经有多篇论文支持，哪些字段仍需要打开原文核实？",
+    "近三年是否出现了新的方法组合或研究方向？"
+  ];
+  return { focus, expandedTerms: terms, subQuestions, suggestedMode: lower.includes("空白") ? "gaps" : "review" };
+}
+
+function renderQuestionPlan(query = $("aiSearchInput")?.value || "") {
+  const plan = $("aiQuestionPlan");
+  if (!plan) return;
+  const text = String(query).trim();
+  if (text.length < 2) { plan.hidden = true; plan.innerHTML = ""; return; }
+  const result = buildResearchQuestionPlan(text);
+  plan.hidden = false;
+  plan.innerHTML = `<strong>研究问题拆解</strong><span>关注：${escapeHtml(result.focus)}</span><small>扩展词：${escapeHtml(result.expandedTerms.join("、") || "等待更多元数据")}</small><ul>${result.subQuestions.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>`;
+}
+
 function setupFilters() {
   state.workspace = state.workspace || loadWorkspace();
   state.compareIds = new Set(state.workspace.compare || []);
@@ -271,6 +382,7 @@ function setupFilters() {
     applyFilters();
   });
   $("aiSearchForm").addEventListener("submit", (event) => { event.preventDefault(); runAiSearch(); });
+  $("aiPlanButton").addEventListener("click", () => renderQuestionPlan());
   $("aiSearchMode").addEventListener("change", (event) => { state.aiMode = event.target.value; });
   [$("aiYearFrom"), $("aiYearTo"), $("aiMinCitations"), $("aiTopicFilter"), $("aiPublicationType"), $("aiVenueFilter")].forEach((control) => control.addEventListener("change", syncAiFilters));
   [$("aiTopicFilter"), $("aiVenueFilter")].forEach((control) => control.addEventListener("input", syncAiFilters));
@@ -284,6 +396,18 @@ function setupFilters() {
     }
   });
   $("aiExportButton").addEventListener("click", exportAiResults);
+  $("aiSaveQueryButton").addEventListener("click", saveCurrentQuery);
+  $("queueButton").addEventListener("click", () => {
+    if (!state.selectedId) return;
+    toggleReadingQueue(state.selectedId);
+    renderDetails(state.data.nodes.find((node) => node.id === state.selectedId));
+  });
+  $("excludeButton").addEventListener("click", () => {
+    if (!state.selectedId) return;
+    excludePaper(state.selectedId, $("detailExcludeReason").value || "other");
+    state.selectedId = null;
+    renderDetails(null);
+  });
   $("favoriteButton").addEventListener("click", () => { if (state.selectedId) { toggleWorkspaceId("favorites", state.selectedId); renderDetails(state.data.nodes.find((node) => node.id === state.selectedId)); } });
   $("compareButton").addEventListener("click", () => { if (state.selectedId) { toggleWorkspaceId("compare", state.selectedId); renderDetails(state.data.nodes.find((node) => node.id === state.selectedId)); } });
   $("readButton").addEventListener("click", () => { if (state.selectedId) { state.workspace.read[state.selectedId] = true; persistWorkspace(); renderDetails(state.data.nodes.find((node) => node.id === state.selectedId)); } });
@@ -320,6 +444,11 @@ function setupFilters() {
   $("zoomIn").addEventListener("click", () => svg.transition().call(state.zoom.scaleBy, 1.25));
   $("zoomOut").addEventListener("click", () => svg.transition().call(state.zoom.scaleBy, .8));
   $("fitGraph").addEventListener("click", fitGraph);
+  document.querySelectorAll("[data-relation-mode]").forEach((button) => button.addEventListener("click", () => {
+    state.detailRelationMode = button.dataset.relationMode || "related";
+    document.querySelectorAll("[data-relation-mode]").forEach((item) => item.classList.toggle("active", item === button));
+    if (state.selectedId) renderDetails(state.data.nodes.find((node) => node.id === state.selectedId));
+  }));
   window.addEventListener("keydown", (event) => { if (event.key === "/" && document.activeElement !== $("searchInput")) { event.preventDefault(); $("searchInput").focus(); } });
   updateWorkspaceControls();
 }
@@ -470,28 +599,36 @@ function aiQueryTerms(query) {
 }
 
 function buildAiCandidates(query, filters = state.aiFilters) {
-  const terms = aiQueryTerms(query);
+  const terms = expandQueryTerms(query);
   const topicTerms = (filters.topics || []).flatMap(aiQueryTerms);
   const minYear = Number(filters.year_from) || 0;
   const maxYear = Number(filters.year_to) || 9999;
   const minCitations = Number(filters.min_citations) || 0;
-  const typeTerms = (filters.publication_types || []).map((value) => String(value).toLowerCase());
-  const venueTerms = (filters.venues || []).map((value) => String(value).toLowerCase());
+  const typeTerms = (filters.publication_types || []).map(normalizePublicationType);
+  const venueTerms = (filters.venues || []).map(normalizeText);
+  const incoming = new Map();
+  const outgoing = new Map();
+  state.data.edges.forEach((edge) => {
+    incoming.set(edge.target, (incoming.get(edge.target) || 0) + 1);
+    outgoing.set(edge.source, (outgoing.get(edge.source) || 0) + 1);
+  });
   const ranked = state.data.nodes.filter((node) => {
-    const topicText = (node.topics || []).join(" ").toLowerCase();
-    const venueText = String(node.venue || "").toLowerCase();
-    const publicationType = String(node.publication_type || node.type || "").toLowerCase();
-    return !node.external && node.year >= minYear && node.year <= maxYear && (node.citations_count || 0) >= minCitations && (!topicTerms.length || topicTerms.every((term) => topicText.includes(term))) && (!typeTerms.length || typeTerms.includes(publicationType)) && (!venueTerms.length || venueTerms.some((term) => venueText.includes(term)));
+    const topicText = normalizeText((node.topics || []).join(" "));
+    const venueText = normalizeText(node.venue);
+    const publicationType = normalizePublicationType(node.publication_type || node.type || "");
+    return !node.external && !excludedReason(node.id) && node.year >= minYear && node.year <= maxYear && (node.citations_count || 0) >= minCitations && (!topicTerms.length || topicTerms.every((term) => topicText.includes(term))) && (!typeTerms.length || typeTerms.includes(publicationType)) && (!venueTerms.length || venueTerms.some((term) => venueText.includes(term)));
   }).map((node) => {
-    const title = String(node.title || "").toLowerCase();
-    const text = [node.title, node.venue, ...(node.authors || []), ...(node.topics || []), node.abstract].join(" ").toLowerCase();
-    const lexical = terms.reduce((score, term) => score + (title.includes(term) ? 8 : 0) + (text.includes(term) ? 2 : 0), 0);
-    const topicMatch = topicTerms.reduce((score, term) => score + (text.includes(term) ? 3 : 0), 0);
+    const title = normalizeText(node.title);
+    const text = normalizeText([node.title, node.venue, ...(node.authors || []), ...(node.topics || []), node.abstract].join(" "));
+    const lexical = terms.reduce((score, term) => score + (title.includes(term) ? 10 : 0) + (text.includes(term) ? 2.5 : 0), 0);
+    const topicMatch = topicTerms.reduce((score, term) => score + (text.includes(normalizeText(term)) ? 3 : 0), 0);
     const recency = Math.max(0, (node.year || 0) - 2015) * 0.05;
     const citationBoost = Math.log1p(node.citations_count || 0) * 0.22;
-    return { node, score: lexical + topicMatch + citationBoost + recency };
+    const graphBoost = Math.log1p(incoming.get(node.id) || 0) * 0.12 + Math.log1p(outgoing.get(node.id) || 0) * 0.05 + (hasAwardSignal(node) ? 0.8 : 0);
+    const completenessBoost = (node.metadata_completeness || 0) * 0.25;
+    return { node, score: lexical + topicMatch + citationBoost + recency + graphBoost + completenessBoost, lexical };
   }).sort((a, b) => b.score - a.score || (b.node.citations_count || 0) - (a.node.citations_count || 0));
-  const selected = ranked.filter((item) => item.score > 0).slice(0, 64);
+  const selected = ranked.filter((item) => item.lexical > 0 || item.score > 0).slice(0, 64);
   const selectedIds = new Set(selected.map((item) => item.node.id));
   ranked.filter((item) => !selectedIds.has(item.node.id)).slice(0, Math.max(0, 80 - selected.length)).forEach((item) => selected.push(item));
   return selected.slice(0, 80).map(({ node }) => ({
@@ -510,7 +647,7 @@ function buildAiCandidates(query, filters = state.aiFilters) {
 }
 
 function localAiPayload(query, mode, filters, candidates) {
-  const terms = aiQueryTerms(query);
+  const terms = expandQueryTerms(query);
   const selected = candidates.slice(0, 12);
   const topicCounts = new Map();
   const venueCounts = new Map();
@@ -541,11 +678,12 @@ function localAiPayload(query, mode, filters, candidates) {
     answer: {
       summary,
       key_points: [
-        `当前模式：${modeLabel}`,
-        years.length ? `候选年份覆盖 ${years[0]}–${years[years.length - 1]}。` : "当前筛选没有足够的年份信息。",
-        "本地回退只使用论文元数据，不会生成库外论文或虚构摘要。"
+        { text: `当前模式：${modeLabel}`, evidence_ids: resultItems.slice(0, 1).map((item) => item.id), support: "metadata" },
+        { text: years.length ? `候选年份覆盖 ${years[0]}–${years[years.length - 1]}。` : "当前筛选没有足够的年份信息。", evidence_ids: resultItems.slice(0, 6).map((item) => item.id), support: "metadata" },
+        { text: "本地回退只使用论文元数据，不会生成库外论文或虚构摘要。", evidence_ids: resultItems.slice(0, 1).map((item) => item.id), support: "metadata" }
       ],
-      caveats: ["摘要和语义向量尚未完全补齐，结论需要打开证据论文核实。"]
+      caveats: ["摘要和语义向量尚未完全补齐，结论需要打开证据论文核实。"],
+      evidence_ids: resultItems.slice(0, 6).map((item) => item.id)
     },
     results: resultItems,
     facets: {
@@ -565,11 +703,14 @@ function renderAiResults() {
   const status = $("aiSearchStatus");
   const results = $("aiSearchResults");
   const interpretation = $("aiQueryInterpretation");
+  const facets = $("aiFacets");
   if (!state.aiResults.length) {
     results.hidden = true;
     results.innerHTML = "";
     interpretation.hidden = true;
     interpretation.innerHTML = "";
+    facets.hidden = true;
+    facets.innerHTML = "";
     updateWorkspaceControls();
     return;
   }
@@ -577,28 +718,66 @@ function renderAiResults() {
   const interpreted = payload.interpreted_query || {};
   interpretation.hidden = false;
   interpretation.innerHTML = `<strong>AI 对问题的理解</strong><span>${escapeHtml(interpreted.main_question || $("aiSearchInput").value)}</span><small>扩展词：${escapeHtml((interpreted.expanded_terms || []).join("、") || "暂无")}</small>`;
+  const facetGroups = [
+    ["年份", payload.facets?.years],
+    ["主题", payload.facets?.topics],
+    ["Venue", payload.facets?.venues]
+  ].filter(([, values]) => Array.isArray(values) && values.length);
+  facets.hidden = !facetGroups.length;
+  facets.innerHTML = facetGroups.map(([label, values]) => `<span class="ai-facet-group"><b>${escapeHtml(label)}</b>${values.slice(0, 5).map((item) => `<span>${escapeHtml(item.value ?? item)}${item.count ? ` · ${formatCount(item.count)}` : ""}</span>`).join("")}</span>`).join("");
   results.hidden = false;
   const answer = payload.answer || {};
   const keyPoints = Array.isArray(answer.key_points) ? answer.key_points : [];
   const caveats = Array.isArray(answer.caveats) ? answer.caveats : [];
-  const answerBlock = `<div class="ai-answer-block"><p class="ai-search-answer">${escapeHtml(answer.summary || state.aiAnswer || "")}</p>${keyPoints.length ? `<ul>${keyPoints.slice(0, 4).map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>` : ""}${caveats.length ? `<p class="ai-caveat">${escapeHtml(caveats[0])}</p>` : ""}</div>`;
+  const evidenceIds = [...new Set((answer.evidence_ids || []).map(String).filter((id) => state.data.nodes.some((node) => node.id === id)))].slice(0, 8);
+  const evidenceLinks = evidenceIds.length ? `<div class="ai-evidence-links"><span>证据论文</span>${evidenceIds.map((id) => `<button type="button" data-ai-evidence="${escapeHtml(id)}">${escapeHtml(shortTitle(state.data.nodes.find((node) => node.id === id)?.title || id))}</button>`).join("")}</div>` : `<div class="ai-evidence-missing">回答未提供可展开的证据论文，需要进一步核实。</div>`;
+  const claimMarkup = keyPoints.slice(0, 4).map((item) => {
+    const claim = typeof item === "string" ? { text: item, evidence_ids: [] } : item || { text: "", evidence_ids: [] };
+    const claimIds = [...new Set((claim.evidence_ids || []).map(String).filter((id) => state.data.nodes.some((node) => node.id === id)))].slice(0, 4);
+    const claimEvidence = claimIds.length ? `<span class="ai-claim-evidence">证据 ${claimIds.map((id) => `<button type="button" data-ai-evidence="${escapeHtml(id)}">${escapeHtml(shortTitle(state.data.nodes.find((node) => node.id === id)?.title || id))}</button>`).join("")}</span>` : `<span class="ai-claim-unverified">需要进一步核实</span>`;
+    const confidence = Number.isFinite(Number(claim.confidence)) ? ` · 置信度 ${Math.round(Number(claim.confidence) * 100)}%` : "";
+    return `<li>${escapeHtml(claim.text || "")}${confidence}${claimEvidence}</li>`;
+  }).join("");
+  const answerBlock = `<div class="ai-answer-block"><p class="ai-search-answer">${escapeHtml(answer.summary || state.aiAnswer || "")}</p>${claimMarkup ? `<ul>${claimMarkup}</ul>` : ""}${caveats.length ? `<p class="ai-caveat">${escapeHtml(caveats[0])}</p>` : ""}${evidenceLinks}</div>`;
   const items = state.aiResults.slice(0, 12).map((result) => {
     const id = String(result.id || "");
     const checked = workspaceHas("compare", id) ? " checked" : "";
     const graph = result.graph_signals || {};
     return `<article class="ai-result" data-ai-result="${escapeHtml(id)}">
       <div class="ai-result-main"><label class="ai-compare-check"><input type="checkbox" data-compare-id="${escapeHtml(id)}"${checked} /><span></span></label><button type="button" class="ai-result-open" data-ai-open="${escapeHtml(id)}"><span class="ai-result-title">${escapeHtml(result.title || "未命名论文")}</span><span class="ai-result-meta">${escapeHtml([result.year, result.venue, `引用 ${formatCount(graph.citation_count ?? result.citations_count ?? 0)}`, result.reason].filter(Boolean).join(" · "))}</span></button></div>
-      <div class="ai-result-actions"><button type="button" data-ai-focus="${escapeHtml(id)}">定位图中</button><button type="button" data-ai-neighborhood="${escapeHtml(id)}">1 跳邻域</button><button type="button" data-ai-favorite="${escapeHtml(id)}">${workspaceHas("favorites", id) ? "已收藏" : "收藏"}</button></div>
+      <div class="ai-result-actions"><button type="button" data-ai-focus="${escapeHtml(id)}">定位图中</button><button type="button" data-ai-neighborhood="${escapeHtml(id)}">1 跳邻域</button><button type="button" data-ai-queue="${escapeHtml(id)}">${queueHas(id) ? "已加入阅读" : "加入阅读"}</button><button type="button" data-ai-favorite="${escapeHtml(id)}">${workspaceHas("favorites", id) ? "已收藏" : "收藏"}</button><button type="button" data-ai-exclude="${escapeHtml(id)}">排除</button><span class="ai-completeness">元数据 ${Math.round(Number(state.data.nodes.find((node) => node.id === id)?.metadata_completeness || 0) * 100)}%</span></div>
     </article>`;
   }).join("");
   const view = payload.view || {};
-  const timeline = Array.isArray(view.timeline) && view.timeline.length ? `<div class="ai-research-view"><strong>时间线</strong><div class="ai-timeline">${view.timeline.slice(0, 8).map((item) => `<span><b>${escapeHtml(item.year)}</b>${formatCount((item.ids || []).length)} 篇</span>`).join("")}</div></div>` : "";
-  const gaps = Array.isArray(view.gaps) && view.gaps.length ? `<div class="ai-research-view"><strong>研究空白提示</strong><ul>${view.gaps.slice(0, 3).map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul></div>` : "";
-  const comparison = state.aiMode === "compare" ? renderComparisonTable() : "";
-  results.innerHTML = `${answerBlock}<div class="ai-result-list">${items}</div>${comparison}${timeline}${gaps}`;
+  const timelineItems = Array.isArray(view.timeline) && view.timeline.length ? view.timeline : [...new Set(state.aiResults.map((result) => result.year).filter(Boolean))].sort((a, b) => a - b).map((year) => ({ year, ids: state.aiResults.filter((result) => result.year === year).map((result) => result.id) }));
+  const timeline = timelineItems.length ? `<div class="ai-research-view"><strong>时间线</strong><div class="ai-timeline">${timelineItems.slice(0, 10).map((item) => `<span><b>${escapeHtml(item.year)}</b>${formatCount((item.ids || []).length)} 篇</span>`).join("")}</div></div>` : "";
+  const gaps = renderResearchGapView(Array.isArray(view.gaps) ? view.gaps : []);
+  const comparison = (state.aiMode === "compare" || state.workspace.compare.length >= 2) ? renderComparisonTable() : "";
+  const readingPath = renderReadingPath();
+  const evidenceMatrix = renderEvidenceMatrix();
+  results.innerHTML = `${answerBlock}<div class="ai-result-list">${items}</div>${readingPath}${comparison}${evidenceMatrix}${timeline}${gaps}`;
   results.querySelectorAll("[data-ai-open]").forEach((item) => item.addEventListener("click", () => focusAiResult(item.dataset.aiOpen)));
   results.querySelectorAll("[data-ai-focus]").forEach((item) => item.addEventListener("click", () => focusAiResult(item.dataset.aiFocus)));
   results.querySelectorAll("[data-ai-neighborhood]").forEach((item) => item.addEventListener("click", () => focusAiResult(item.dataset.aiNeighborhood, true)));
+  results.querySelectorAll("[data-ai-evidence]").forEach((item) => item.addEventListener("click", () => focusAiResult(item.dataset.aiEvidence)));
+  results.querySelectorAll("[data-ai-queue]").forEach((item) => item.addEventListener("click", () => {
+    toggleReadingQueue(item.dataset.aiQueue);
+    renderAiResults();
+  }));
+  results.querySelectorAll("[data-ai-exclude]").forEach((item) => item.addEventListener("click", () => {
+    excludePaper(item.dataset.aiExclude, "out-of-scope");
+  }));
+  results.querySelectorAll("[data-reading-open]").forEach((item) => item.addEventListener("click", () => focusAiResult(item.dataset.readingOpen)));
+  results.querySelectorAll("[data-reading-queue]").forEach((item) => item.addEventListener("click", () => {
+    toggleReadingQueue(item.dataset.readingQueue);
+    renderAiResults();
+  }));
+  results.querySelectorAll("[data-matrix-id]").forEach((input) => input.addEventListener("change", () => {
+    const id = input.dataset.matrixId;
+    const field = input.dataset.matrixField;
+    state.workspace.matrix[id] = { ...(state.workspace.matrix[id] || {}), [field]: input.value.trim() };
+    persistWorkspace();
+  }));
   results.querySelectorAll("[data-ai-favorite]").forEach((item) => item.addEventListener("click", () => {
     toggleWorkspaceId("favorites", item.dataset.aiFavorite);
     renderAiResults();
@@ -613,16 +792,76 @@ function renderAiResults() {
   updateWorkspaceControls();
 }
 
-function renderComparisonTable() {
-  const selectedIds = state.workspace.compare?.length ? new Set(state.workspace.compare) : new Set(state.aiResults.slice(0, 5).map((result) => String(result.id)));
-  const rows = state.aiResults.filter((result) => selectedIds.has(String(result.id))).slice(0, 5).map((result) => {
-    const node = state.data.nodes.find((item) => item.id === String(result.id));
-    const topics = (node?.topics || []).slice(0, 2).join("、") || "元数据不足";
-    const abstractState = node?.abstract ? "摘要已补充" : "元数据不足";
-    return `<tr><th>${escapeHtml(shortTitle(node?.title || result.title || "未命名论文"))}</th><td>${escapeHtml(node?.year || result.year || "—")}</td><td>${escapeHtml(topics)}</td><td>${escapeHtml(formatCount(node?.citations_count || result.graph_signals?.citation_count || 0))}</td><td>${escapeHtml(abstractState)}</td></tr>`;
+function renderResearchGapView(modelGaps) {
+  const nodes = state.aiResults.map((result) => state.data.nodes.find((node) => node.id === String(result.id))).filter(Boolean);
+  const topicCounts = new Map();
+  nodes.forEach((node) => (node.topics || []).slice(0, 4).forEach((topic) => topicCounts.set(topic, (topicCounts.get(topic) || 0) + 1)));
+  const topTopics = [...topicCounts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 4);
+  const gaps = modelGaps.length ? modelGaps : [
+    topTopics.length > 1 ? `主题交叉 ${topTopics[0][0]} × ${topTopics[1][0]}：候选论文较少，需进一步核实。` : "候选论文的主题交叉不足，需扩大检索范围。",
+    nodes.filter((node) => !node.abstract).length ? `${nodes.filter((node) => !node.abstract).length} 篇候选缺少摘要，方法与数据集结论需要进一步核实。` : "当前候选摘要覆盖较完整，可继续检查方法和数据集差异。",
+    "引用薄弱区域只表示当前快照中的连接较少，不等同于已证实的研究空白。"
+  ];
+  const bars = topTopics.map(([topic, count]) => `<span class="ai-gap-bar"><i style="width:${Math.max(12, Math.round((count / Math.max(1, nodes.length)) * 100))}%"></i><b>${escapeHtml(topic)}</b><em>${count}</em></span>`).join("");
+  return `<div class="ai-research-view ai-gap-view"><strong>研究空白图（需要进一步核实）</strong>${bars ? `<div class="ai-gap-bars">${bars}</div>` : ""}<ul>${gaps.slice(0, 4).map((item) => `<li>${escapeHtml(typeof item === "string" ? item : item?.text || "")}</li>`).join("")}</ul></div>`;
+}
+
+function renderReadingPath() {
+  const results = state.aiResults.slice(0, 12);
+  if (!results.length) return "";
+  const byId = new Map(results.map((result) => [String(result.id), result]));
+  const nodes = results.map((result) => state.data.nodes.find((node) => node.id === String(result.id))).filter(Boolean);
+  const groups = [
+    ["先读基础", [...nodes].sort((a, b) => (a.year || 0) - (b.year || 0) || (b.citations_count || 0) - (a.citations_count || 0))],
+    ["重点方法", [...nodes].sort((a, b) => (byId.get(b.id)?.relevance_score || 0) - (byId.get(a.id)?.relevance_score || 0))],
+    ["看近期方向", [...nodes].sort((a, b) => (b.year || 0) - (a.year || 0) || (b.citations_count || 0) - (a.citations_count || 0))]
+  ];
+  const ordered = [];
+  groups.forEach(([label, group]) => {
+    const node = group.find((candidate) => !ordered.some((item) => item.node.id === candidate.id));
+    if (node) ordered.push({ label, node });
+  });
+  nodes.forEach((node) => {
+    if (ordered.length < 6 && !ordered.some((item) => item.node.id === node.id)) ordered.push({ label: "继续阅读", node });
+  });
+  return `<div class="ai-research-view ai-reading-path"><strong>推荐阅读顺序</strong><div class="ai-reading-list">${ordered.slice(0, 6).map((item, index) => `<div class="ai-reading-item"><b>${index + 1}</b><span class="ai-reading-copy"><strong>${escapeHtml(item.label)}</strong><span>${escapeHtml(shortTitle(item.node.title))} · ${item.node.year || "年份未知"}</span></span><button type="button" data-reading-open="${escapeHtml(item.node.id)}">打开</button><button type="button" data-reading-queue="${escapeHtml(item.node.id)}">${queueHas(item.node.id) ? "已加入" : "加入队列"}</button></div>`).join("")}</div><small>顺序综合发表年份、引用量、相关性和近期性；它是阅读建议，不是论文质量结论。</small></div>`;
+}
+
+function renderEvidenceMatrix() {
+  const ids = state.workspace.compare?.length ? state.workspace.compare.slice(0, 5).map(String) : state.aiResults.slice(0, 5).map((result) => String(result.id));
+  const rows = ids.map((id) => {
+    const node = state.data.nodes.find((item) => item.id === id);
+    const result = state.aiResults.find((item) => String(item.id) === id) || {};
+    if (!node) return "";
+    const saved = state.workspace.matrix?.[id] || {};
+    const values = {
+      question: saved.question || "元数据不足",
+      method: saved.method || (node.abstract ? "从摘要中提取" : "元数据不足"),
+      dataset: saved.dataset || "元数据不足",
+      metrics: saved.metrics || "元数据不足",
+      takeaway: saved.takeaway || result.reason || "元数据不足",
+      limitation: saved.limitation || (node.abstract ? "请从摘要和原文核实" : "需要进一步核实")
+    };
+    const cell = (field) => `<input class="matrix-input" data-matrix-id="${escapeHtml(id)}" data-matrix-field="${field}" value="${escapeHtml(values[field])}" aria-label="${escapeHtml(field)}" />`;
+    return `<tr><th>${escapeHtml(shortTitle(node.title))}<small>${node.year || ""}</small></th><td>${cell("question")}</td><td>${cell("method")}</td><td>${cell("dataset")}</td><td>${cell("metrics")}</td><td>${cell("takeaway")}</td><td>${cell("limitation")}</td></tr>`;
   }).join("");
   if (!rows) return "";
-  return `<div class="ai-research-view ai-comparison-view"><strong>方法矩阵（当前元数据）</strong><div class="ai-table-wrap"><table><thead><tr><th>论文</th><th>年份</th><th>主题</th><th>引用</th><th>摘要</th></tr></thead><tbody>${rows}</tbody></table></div><small>方法、数据集和指标字段会在摘要补全后继续丰富；未提供的字段显示为“元数据不足”。</small></div>`;
+  return `<div class="ai-research-view ai-evidence-matrix"><strong>证据矩阵</strong><div class="ai-table-wrap"><table><thead><tr><th>论文</th><th>研究问题</th><th>方法</th><th>数据集</th><th>指标</th><th>主要结论</th><th>局限</th></tr></thead><tbody>${rows}</tbody></table></div><small>表格字段可以直接编辑并保存在浏览器本地；“元数据不足”表示当前快照没有足够证据。</small></div>`;
+}
+
+function renderComparisonTable() {
+  const selectedIds = state.workspace.compare?.length ? state.workspace.compare.slice(0, 5).map(String) : state.aiResults.slice(0, 5).map((result) => String(result.id));
+  const resultById = new Map(state.aiResults.map((result) => [String(result.id), result]));
+  const rows = selectedIds.map((id) => {
+    const result = resultById.get(id) || {};
+    const node = state.data.nodes.find((item) => item.id === id);
+    const topics = (node?.topics || []).slice(0, 2).join("、") || "元数据不足";
+    const abstractState = node?.abstract ? "摘要已补充" : "元数据不足";
+    const method = node?.abstract ? "摘要中可核对" : "元数据不足";
+    return `<tr><th>${escapeHtml(shortTitle(node?.title || result.title || "未命名论文"))}</th><td>${escapeHtml(node?.year || result.year || "—")}</td><td>${escapeHtml(method)}</td><td>${escapeHtml(topics)}</td><td>${escapeHtml(formatCount(node?.citations_count || result.graph_signals?.citation_count || 0))}</td><td>${escapeHtml(abstractState)}</td></tr>`;
+  }).join("");
+  if (!rows) return "";
+  return `<div class="ai-research-view ai-comparison-view"><strong>方法矩阵（当前元数据）</strong><div class="ai-table-wrap"><table><thead><tr><th>论文</th><th>年份</th><th>方法证据</th><th>主题</th><th>引用</th><th>摘要</th></tr></thead><tbody>${rows}</tbody></table></div><small>方法、数据集和指标只使用已有摘要或元数据；未提供的字段显示为“元数据不足”。</small></div>`;
 }
 
 function focusAiResult(id, neighborhood = false) {
@@ -640,9 +879,12 @@ function saveSearchHistory(query, mode, filters) {
 
 function updateWorkspaceControls() {
   const count = state.workspace?.compare?.length || 0;
+  const queueCount = state.workspace?.readingQueue?.length || 0;
   if ($("aiCompareCount")) $("aiCompareCount").textContent = String(count);
+  if ($("aiQueueCount")) $("aiQueueCount").textContent = String(queueCount);
   if ($("aiCompareButton")) $("aiCompareButton").disabled = count < 2;
   if ($("compareButton") && state.selectedId) $("compareButton").textContent = workspaceHas("compare", state.selectedId) ? "✓ 已加入对比" : "＋ 加入对比";
+  if ($("queueButton") && state.selectedId) $("queueButton").textContent = queueHas(state.selectedId) ? "✓ 待读队列" : "＋ 阅读队列";
 }
 
 function downloadText(filename, content, type = "text/plain;charset=utf-8") {
@@ -654,14 +896,65 @@ function downloadText(filename, content, type = "text/plain;charset=utf-8") {
   setTimeout(() => URL.revokeObjectURL(link.href), 1000);
 }
 
+function exportNodes() {
+  const ids = state.workspace.compare?.length ? state.workspace.compare.slice(0, 5).map(String) : state.aiResults.map((result) => String(result.id));
+  const selected = ids.length ? ids : (state.workspace.favorites || []).map(String);
+  const unique = [...new Set(selected)];
+  return unique.map((id) => ({
+    node: state.data.nodes.find((item) => item.id === id),
+    result: state.aiResults.find((item) => String(item.id) === id)
+  })).filter((item) => item.node);
+}
+
+function bibtexKey(node, index) {
+  const author = String(node.authors?.[0] || "paper").replace(/[^a-z0-9]/gi, "").slice(0, 18).toLowerCase() || "paper";
+  return `${author}${node.year || ""}${index + 1}`;
+}
+
 function exportAiResults() {
-  if (!state.aiResults.length) { $("aiSearchStatus").textContent = "请先完成一次 AI 搜索。"; return; }
-  const rows = state.aiResults.map((result) => {
-    const node = state.data.nodes.find((item) => item.id === String(result.id));
-    return { ...result, node };
-  });
-  const csv = ["id,title,year,venue,citations,reason", ...rows.map(({ node, ...result }) => [result.id, node?.title || result.title, node?.year || result.year, node?.venue || result.venue, node?.citations_count || result.citations_count || 0, result.reason || ""].map((value) => `"${String(value ?? "").replace(/"/g, '""')}"`).join(","))].join("\n");
-  downloadText("ai-research-results.csv", `\ufeff${csv}`, "text/csv;charset=utf-8");
+  const rows = exportNodes();
+  if (!rows.length) { $("aiSearchStatus").textContent = "请先完成一次检索，或加入收藏/对比列表。"; return; }
+  const format = $("aiExportFormat")?.value || "csv";
+  if (format === "bibtex") {
+    const content = rows.map(({ node }, index) => {
+      const authors = (node.authors || []).join(" and ") || "Metadata unavailable";
+      const fields = [
+        `  title = {${node.title || "Untitled paper"}}`,
+        `  author = {${authors}}`,
+        `  year = {${node.year || ""}}`,
+        `  venue = {${node.venue || ""}}`,
+        node.doi ? `  doi = {${node.doi}}` : "",
+        node.url ? `  url = {${node.url}}` : ""
+      ].filter(Boolean).join(",\n");
+      return `@misc{${bibtexKey(node, index)},\n${fields}\n}`;
+    }).join("\n\n");
+    downloadText("ai-research-papers.bib", content, "text/plain;charset=utf-8");
+  } else if (format === "markdown" || format === "notes") {
+    const query = $("aiSearchInput").value.trim() || state.workspace.history?.[0]?.query || "当前检索";
+    const answer = state.aiPayload?.answer?.summary || state.aiAnswer || "暂无结构化总结。";
+    const lines = [`# ${format === "notes" ? "研究笔记" : "文献综述草稿"}`, "", `> 研究问题：${query}`, "", "## 检索总结", "", answer, "", "## 证据论文", ""];
+    rows.forEach(({ node, result }, index) => {
+      lines.push(`${index + 1}. **${node.title}**（${node.year || "年份未知"}，${node.venue || "venue 未知"}）`);
+      lines.push(`   - 论文 ID：\`${node.id}\``);
+      lines.push(`   - 引用量：${formatCount(node.citations_count || 0)}；元数据完整度：${Math.round((node.metadata_completeness || 0) * 100)}%`);
+      lines.push(`   - 检索理由：${result?.reason || "未提供"}`);
+      lines.push(`   - 个人笔记：${state.workspace.notes?.[node.id] || "暂无"}`);
+      lines.push(`   - 摘要：${node.abstract || "元数据不足，需要进一步核实。"}`, "");
+    });
+    downloadText(format === "notes" ? "ai-research-notes.md" : "ai-literature-review.md", lines.join("\n"), "text/markdown;charset=utf-8");
+  } else {
+    const csv = ["id,title,year,venue,publication_type,citations,metadata_completeness,reason,evidence_ids", ...rows.map(({ node, result }) => [node.id, node.title, node.year, node.venue, node.publication_type, node.citations_count || 0, node.metadata_completeness || 0, result?.reason || "", (result?.evidence_ids || []).join(";")].map((value) => `"${String(value ?? "").replace(/"/g, '""')}"`).join(","))].join("\n");
+    downloadText("ai-research-results.csv", `\ufeff${csv}`, "text/csv;charset=utf-8");
+  }
+  $("aiSearchStatus").textContent = `已导出 ${rows.length} 篇论文（${format.toUpperCase()}）。`;
+}
+
+function saveCurrentQuery() {
+  const query = $("aiSearchInput").value.trim() || state.workspace.history?.[0]?.query;
+  if (!query) { $("aiSearchStatus").textContent = "请输入研究问题后再保存。"; return; }
+  state.workspace.savedQueries = [{ query, mode: state.aiMode, filters: state.aiFilters, at: new Date().toISOString() }, ...(state.workspace.savedQueries || []).filter((item) => item.query !== query)].slice(0, 20);
+  persistWorkspace();
+  $("aiSearchStatus").textContent = "研究问题已保存到本地工作区。";
 }
 
 async function runAiSearch() {
@@ -672,9 +965,30 @@ async function runAiSearch() {
     if (query.length < 2) $("aiSearchStatus").textContent = "请输入至少 2 个字符。";
     return;
   }
+  renderQuestionPlan(query);
   syncAiFilters();
   state.aiMode = $("aiSearchMode").value || "review";
-  const candidates = buildAiCandidates(query, state.aiFilters);
+  let candidates = buildAiCandidates(query, state.aiFilters);
+  if (state.aiMode === "compare" && state.workspace.compare.length >= 2) {
+    const selectedNodes = state.workspace.compare
+      .map((id) => state.data.nodes.find((node) => node.id === String(id)))
+      .filter(Boolean)
+      .map((node) => ({
+        id: node.id,
+        title: node.title,
+        year: node.year,
+        venue: node.venue,
+        authors: (node.authors || []).slice(0, 5),
+        topics: (node.topics || []).slice(0, 6),
+        citations_count: node.citations_count || 0,
+        abstract: String(node.abstract || "").slice(0, 800),
+        metadata_completeness: node.metadata_completeness || 0,
+        publication_type: node.publication_type || "",
+        is_frontier: state.frontierIds.has(node.id) || hasAwardSignal(node)
+      }));
+    const selectedIds = new Set(selectedNodes.map((node) => node.id));
+    candidates = [...selectedNodes, ...candidates.filter((candidate) => !selectedIds.has(candidate.id))].slice(0, 80);
+  }
   state.aiBusy = true;
   button.disabled = true;
   button.textContent = "搜索中…";
@@ -682,9 +996,6 @@ async function runAiSearch() {
   state.aiSearchIds.clear();
   state.aiResults = [];
   state.aiAnswer = "";
-  state.aiPayload = null;
-  state.aiMode = "review";
-  state.aiFilters = { year_from: state.yearMin, year_to: state.yearMax, topics: [], publication_types: [], venues: [], min_citations: 0 };
   state.aiPayload = null;
   renderAiResults();
   try {
@@ -878,35 +1189,71 @@ function applyHighlight() {
   labelLayer.selectAll("text").classed("active", (node) => node.id === selected);
 }
 
+function relationItemsFor(node) {
+  const incoming = state.data.edges.filter((edge) => edge.target === node.id).map((edge) => ({ id: edge.source, type: "incoming" }));
+  const outgoing = state.data.edges.filter((edge) => edge.source === node.id).map((edge) => ({ id: edge.target, type: "outgoing" }));
+  const directIds = new Set([...incoming, ...outgoing].map((item) => item.id));
+  const nodeById = new Map(state.data.nodes.map((item) => [item.id, item]));
+  const toNode = (item) => ({ ...item, node: nodeById.get(item.id) });
+  if (state.detailRelationMode === "foundations") return outgoing.map(toNode).sort((a, b) => (a.node?.year || 0) - (b.node?.year || 0));
+  if (state.detailRelationMode === "followups") return incoming.map(toNode).sort((a, b) => (b.node?.year || 0) - (a.node?.year || 0));
+  if (state.detailRelationMode === "citing") return incoming.map(toNode).sort((a, b) => (b.node?.citations_count || 0) - (a.node?.citations_count || 0));
+  if (state.detailRelationMode === "same-topic") {
+    const topics = new Set((node.topics || []).slice(0, 3));
+    return state.data.nodes.filter((candidate) => candidate.id !== node.id && !candidate.external && (candidate.topics || []).some((topic) => topics.has(topic)) && !directIds.has(candidate.id))
+      .map((candidate) => ({ id: candidate.id, type: "same-topic", node: candidate }))
+      .sort((a, b) => (b.node.citations_count || 0) - (a.node.citations_count || 0));
+  }
+  if (state.detailRelationMode === "frontier") {
+    const topics = new Set((node.topics || []).slice(0, 3));
+    return state.data.nodes.filter((candidate) => candidate.id !== node.id && !candidate.external && (candidate.topics || []).some((topic) => topics.has(topic)))
+      .map((candidate) => ({ id: candidate.id, type: "frontier", node: candidate }))
+      .sort((a, b) => (b.node.year || 0) - (a.node.year || 0) || (b.node.citations_count || 0) - (a.node.citations_count || 0));
+  }
+  return [...new Map([...incoming, ...outgoing].map((item) => [`${item.id}:${item.type}`, item])).values()].map(toNode);
+}
+
+function renderDetailRelations(node) {
+  const items = relationItemsFor(node).filter((item) => item.node).slice(0, 7);
+  $("relatedCount").textContent = relationItemsFor(node).filter((item) => item.node).length;
+  $("relatedList").innerHTML = items.map((item) => {
+    const relationLabel = item.type === "incoming" ? "引用此论文" : item.type === "outgoing" ? "此论文引用" : item.type === "same-topic" ? "同主题、无直接引用" : item.type === "frontier" ? "同主题前沿" : "相关论文";
+    return `<div class="related-item" data-related="${escapeHtml(item.node.id)}"><span class="related-dot ${item.type === "incoming" ? "incoming" : ""}"></span><span class="related-copy"><span class="related-title">${escapeHtml(item.node.title)}</span><span class="related-meta">${relationLabel} · ${item.node.year || "年份未知"} · 引用 ${formatCount(item.node.citations_count || 0)}</span></span></div>`;
+  }).join("") || `<p class="related-empty">当前快照没有可显示的关系记录。</p>`;
+  $("relatedList").querySelectorAll(".related-item").forEach((item) => item.addEventListener("click", () => selectNode(item.dataset.related)));
+  document.querySelectorAll("[data-relation-mode]").forEach((button) => button.classList.toggle("active", button.dataset.relationMode === state.detailRelationMode));
+}
+
 function renderDetails(node) {
   if (!node) { $("detailsEmpty").hidden = false; $("detailsContent").hidden = true; $("neighborhoodButton").hidden = true; return; }
   $("detailsEmpty").hidden = true; $("detailsContent").hidden = false;
   $("neighborhoodButton").hidden = false;
   $("neighborhoodButton").textContent = state.neighborhoodId ? "退出邻域" : `在图中查看 ${state.neighborhoodDepth} 跳邻域`;
   $("detailYear").textContent = node.year;
+  $("detailType").textContent = String(node.publication_type || node.source_type || "paper").replace(/-/g, " ").toUpperCase();
   $("detailTitle").textContent = node.title;
   $("detailVenue").textContent = [node.venue, node.external ? "外部引用节点" : "收录论文"].filter(Boolean).join(" · ");
   $("detailAuthors").textContent = (node.authors || []).join(" · ") || "作者信息待补充";
-  const completeness = node.metadata_completeness ? ` · 元数据完整度 ${Math.round(node.metadata_completeness * 100)}%` : "";
-  $("detailProvenance").textContent = `来源 · ${node.source || "OpenAlex / arXiv 公共元数据快照"}${completeness}`;
+  const completeness = ` · 元数据完整度 ${Math.round((node.metadata_completeness || 0) * 100)}%`;
+  const providers = node.metadata_source?.length ? node.metadata_source.join(" + ") : (node.source || "OpenAlex / CitationCS 公共元数据快照");
+  const updated = node.metadata_updated_at ? ` · 更新 ${String(node.metadata_updated_at).slice(0, 10)}` : "";
+  $("detailProvenance").textContent = `来源 · ${providers}${updated}${completeness}`;
   $("detailTags").innerHTML = (node.topics || []).map((topic) => `<span class="detail-tag">${escapeHtml(topic)}</span>`).join("");
   $("detailAbstract").textContent = node.abstract || "暂无摘要。当前页面不会根据标题猜测摘要，后续公开元数据同步后再补充。";
   $("favoriteButton").textContent = workspaceHas("favorites", node.id) ? "★ 已收藏" : "☆ 收藏";
   $("compareButton").textContent = workspaceHas("compare", node.id) ? "✓ 已加入对比" : "＋ 加入对比";
   $("readButton").textContent = state.workspace.read?.[node.id] ? "✓ 已读" : "标记已读";
+  $("queueButton").textContent = queueHas(node.id) ? "✓ 待读队列" : "＋ 阅读队列";
+  $("excludeButton").textContent = excludedReason(node.id) ? "已排除" : "排除";
+  $("excludeButton").disabled = Boolean(excludedReason(node.id));
+  if (excludedReason(node.id)) $("detailExcludeReason").value = excludedReason(node.id);
   $("detailNote").value = state.workspace.notes?.[node.id] || "";
   const incoming = state.data.edges.filter((edge) => edge.target === node.id);
   const outgoing = state.data.edges.filter((edge) => edge.source === node.id);
   $("detailReferences").textContent = outgoing.length;
   $("detailCitations").textContent = incoming.length;
   $("detailConnections").textContent = incoming.length + outgoing.length;
-  const relatedIds = [...new Set([...incoming.map((edge) => ({ id: edge.source, type: "incoming" })), ...outgoing.map((edge) => ({ id: edge.target, type: "outgoing" }))].map((item) => JSON.stringify(item)))].map((item) => JSON.parse(item));
-  $("relatedCount").textContent = relatedIds.length;
-  $("relatedList").innerHTML = relatedIds.slice(0, 7).map((item) => {
-    const related = state.data.nodes.find((candidate) => candidate.id === item.id); if (!related) return "";
-    return `<div class="related-item" data-related="${escapeHtml(related.id)}"><span class="related-dot ${item.type === "incoming" ? "incoming" : ""}"></span><span class="related-copy"><span class="related-title">${escapeHtml(related.title)}</span><span class="related-meta">${item.type === "incoming" ? "引用此论文" : "此论文引用"} · ${related.year}</span></span></div>`;
-  }).join("");
-  $("relatedList").querySelectorAll(".related-item").forEach((item) => item.addEventListener("click", () => selectNode(item.dataset.related)));
+  renderDetailRelations(node);
   const link = $("detailLink"); link.href = node.url || `https://openalex.org/${encodeURIComponent(node.id)}`;
   updateWorkspaceControls();
 }
@@ -929,8 +1276,12 @@ function resetView() {
   state.aiSearchIds.clear();
   state.aiResults = [];
   state.aiAnswer = "";
+  state.aiMode = "review";
+  state.aiFilters = { year_from: state.yearMin, year_to: state.yearMax, topics: [], publication_types: [], venues: [], min_citations: 0 };
+  state.detailRelationMode = "related";
   $("searchInput").value = "";
   $("aiSearchInput").value = "";
+  renderQuestionPlan("");
   $("aiSearchMode").value = "review";
   $("aiYearFrom").value = state.yearMin;
   $("aiYearTo").value = state.yearMax;
@@ -939,6 +1290,7 @@ function resetView() {
   $("aiPublicationType").value = "";
   $("aiVenueFilter").value = "";
   $("aiSearchStatus").textContent = "";
+  document.querySelectorAll("[data-relation-mode]").forEach((button) => button.classList.toggle("active", button.dataset.relationMode === "related"));
   renderAiResults();
   state.activeTopics.clear();
   document.querySelectorAll(".topic-chip").forEach((chip) => { chip.classList.remove("active"); chip.setAttribute("aria-pressed", "false"); });

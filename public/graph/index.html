@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="theme-color" content="#080c16" />
     <title>AI Research Graph</title>
-    <link rel="stylesheet" href="styles.css?v=26" />
+    <link rel="stylesheet" href="styles.css?v=30" />
     <script src="https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js"></script>
   </head>
   <body>
@@ -119,8 +119,10 @@
             <p class="ai-search-copy">用自然语言描述研究问题，先用图谱和元数据筛选候选论文，再由 AI 组织综述、比较、空白和前沿线索。</p>
             <form class="ai-search-form" id="aiSearchForm">
               <input id="aiSearchInput" type="search" placeholder="如：视觉语言模型的对齐方法" autocomplete="off" />
+              <button id="aiPlanButton" type="button" class="ai-plan-button">拆解问题</button>
               <button id="aiSearchButton" type="submit">搜索</button>
             </form>
+            <div class="ai-question-plan" id="aiQuestionPlan" hidden></div>
             <div class="ai-control-grid">
               <label class="ai-control"><span>研究模式</span><select id="aiSearchMode" class="select-control">
                 <option value="review">梳理文献综述</option>
@@ -136,12 +138,21 @@
               <label class="ai-control"><span>Venue</span><input id="aiVenueFilter" class="ai-filter-input" type="search" placeholder="可选，如 NeurIPS" autocomplete="off" /></label>
             </div>
             <div class="ai-interpretation" id="aiQueryInterpretation" hidden></div>
+            <div class="ai-facets" id="aiFacets" hidden></div>
             <p class="ai-search-status" id="aiSearchStatus" role="status" aria-live="polite"></p>
             <div class="ai-search-results" id="aiSearchResults" hidden></div>
             <div class="ai-workspace-strip">
               <span><strong id="aiCompareCount">0</strong> 篇待比较</span>
+              <span><strong id="aiQueueCount">0</strong> 篇待阅读</span>
               <button type="button" class="text-button" id="aiCompareButton" disabled>生成比较表</button>
-              <button type="button" class="text-button" id="aiExportButton">导出检索结果</button>
+              <select id="aiExportFormat" class="ai-export-select" aria-label="导出格式">
+                <option value="csv">CSV</option>
+                <option value="bibtex">BibTeX</option>
+                <option value="markdown">Markdown 综述</option>
+                <option value="notes">研究笔记</option>
+              </select>
+              <button type="button" class="text-button" id="aiExportButton">导出</button>
+              <button type="button" class="text-button" id="aiSaveQueryButton">保存问题</button>
             </div>
           </section>
           <div class="graph-panel panel" id="graphPanel">
@@ -184,6 +195,17 @@
               <button type="button" class="detail-action" id="favoriteButton">☆ 收藏</button>
               <button type="button" class="detail-action" id="compareButton">＋ 加入对比</button>
               <button type="button" class="detail-action" id="readButton">标记已读</button>
+              <button type="button" class="detail-action" id="queueButton">＋ 阅读队列</button>
+            </div>
+            <div class="detail-exclude-row">
+              <select id="detailExcludeReason" class="select-control" aria-label="排除原因">
+                <option value="out-of-scope">超出研究范围</option>
+                <option value="duplicate">重复版本</option>
+                <option value="metadata">元数据不足</option>
+                <option value="already-read">已经读过</option>
+                <option value="other">其他原因</option>
+              </select>
+              <button type="button" class="detail-exclude-button" id="excludeButton">排除</button>
             </div>
             <label class="detail-note-label" for="detailNote">个人笔记</label>
             <textarea class="detail-note" id="detailNote" rows="3" placeholder="记录这篇论文对你的研究有什么帮助…"></textarea>
@@ -197,6 +219,14 @@
             </div>
             <div class="related-section">
               <div class="related-heading"><span>相邻论文</span><span class="related-count" id="relatedCount">0</span></div>
+              <div class="related-tools" role="tablist" aria-label="论文关系视图">
+                <button type="button" class="related-tool active" data-relation-mode="related">相邻</button>
+                <button type="button" class="related-tool" data-relation-mode="foundations">基础</button>
+                <button type="button" class="related-tool" data-relation-mode="followups">后续</button>
+                <button type="button" class="related-tool" data-relation-mode="citing">高引引用</button>
+                <button type="button" class="related-tool" data-relation-mode="same-topic">同主题</button>
+                <button type="button" class="related-tool" data-relation-mode="frontier">前沿</button>
+              </div>
               <div class="related-list" id="relatedList"></div>
             </div>
             <button class="neighborhood-button" id="neighborhoodButton" type="button">在图中查看 1 跳邻域</button>
@@ -210,6 +240,6 @@
         <div class="footer-note">引用关系来自 OpenAlex 与 CitationCS 的公开快照 · 目标窗口 2016–2026</div>
       </footer>
     </div>
-    <script src="app.js?v=26"></script>
+    <script src="app.js?v=30"></script>
   </body>
 </html>

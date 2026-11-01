@@ -1,0 +1,26 @@
+[
+  {
+    "id": "vlm-alignment-zh",
+    "query": "视觉语言模型的对齐方法",
+    "expected_terms": ["multimodal", "alignment", "cross modal", "grounding"],
+    "notes": "中文问法；检查视觉语言与对齐术语扩展"
+  },
+  {
+    "id": "federated-privacy-communication-zh",
+    "query": "联邦学习中的隐私与通信效率",
+    "expected_terms": ["federated", "privacy", "communication"],
+    "notes": "中文问法；检查隐私和通信效率交叉主题"
+  },
+  {
+    "id": "graph-node-classification",
+    "query": "图神经网络中的节点分类",
+    "expected_terms": ["graph neural", "node classification", "graph convolution", "gnn"],
+    "notes": "主题与任务组合"
+  },
+  {
+    "id": "pretrained-language-models",
+    "query": "自然语言处理中的预训练语言模型",
+    "expected_terms": ["language model", "pretrain", "natural language", "transformer"],
+    "notes": "主题与方法组合"
+  }
+]

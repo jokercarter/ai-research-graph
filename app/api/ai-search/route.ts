@@ -36,6 +36,20 @@ type SearchResult = {
   graph_signals: { citation_count: number; is_frontier: boolean };
 };
 
+type EvidenceClaim = {
+  text: string;
+  evidence_ids: string[];
+  confidence?: number;
+  support?: "abstract" | "metadata" | "graph" | "unknown";
+};
+
+type NormalizedAnswer = {
+  summary: string;
+  key_points: EvidenceClaim[];
+  caveats: string[];
+  evidence_ids: string[];
+};
+
 const MAX_CANDIDATES = 80;
 const MAX_RESULTS = 12;
 const MAX_QUERY_LENGTH = 240;
@@ -51,12 +65,15 @@ function jsonError(message: string, status = 400) {
   return Response.json({ error: message }, { status });
 }
 
-function outputText(payload: any) {
-  if (typeof payload?.output_text === "string") return payload.output_text;
+function outputText(payload: unknown) {
+  const record = payload && typeof payload === "object" ? payload as Record<string, unknown> : {};
+  if (typeof record.output_text === "string") return record.output_text;
   const chunks: string[] = [];
-  for (const item of payload?.output || []) {
-    for (const content of item?.content || []) {
-      if (typeof content?.text === "string") chunks.push(content.text);
+  for (const item of Array.isArray(record.output) ? record.output : []) {
+    const itemRecord = item && typeof item === "object" ? item as Record<string, unknown> : {};
+    for (const content of Array.isArray(itemRecord.content) ? itemRecord.content : []) {
+      const contentRecord = content && typeof content === "object" ? content as Record<string, unknown> : {};
+      if (typeof contentRecord.text === "string") chunks.push(contentRecord.text);
     }
   }
   return chunks.join("\n");
@@ -84,19 +101,22 @@ function normalizeMode(value: unknown): Mode {
 
 function normalizeCandidates(value: unknown): Candidate[] {
   if (!Array.isArray(value)) return [];
-  return value.slice(0, MAX_CANDIDATES).map((candidate: any) => ({
-    id: safeString(candidate?.id, 180),
-    title: safeString(candidate?.title, 240),
-    year: Number(candidate?.year) || undefined,
-    venue: safeString(candidate?.venue, 120),
-    authors: Array.isArray(candidate?.authors) ? candidate.authors.slice(0, 5).map((item: unknown) => safeString(item, 100)) : [],
-    topics: Array.isArray(candidate?.topics) ? candidate.topics.slice(0, 8).map((item: unknown) => safeString(item, 100)) : [],
-    citations_count: Number(candidate?.citations_count) || 0,
-    abstract: safeString(candidate?.abstract, 800),
-    metadata_completeness: Math.max(0, Math.min(1, Number(candidate?.metadata_completeness) || 0)),
-    publication_type: safeString(candidate?.publication_type, 80),
-    is_frontier: Boolean(candidate?.is_frontier),
-  })).filter((candidate) => candidate.id && candidate.title);
+  return value.slice(0, MAX_CANDIDATES).map((candidate: unknown) => {
+    const item = candidate && typeof candidate === "object" ? candidate as Record<string, unknown> : {};
+    return {
+      id: safeString(item.id, 180),
+      title: safeString(item.title, 240),
+      year: Number(item.year) || undefined,
+      venue: safeString(item.venue, 120),
+      authors: Array.isArray(item.authors) ? item.authors.slice(0, 5).map((author) => safeString(author, 100)) : [],
+      topics: Array.isArray(item.topics) ? item.topics.slice(0, 8).map((topic) => safeString(topic, 100)) : [],
+      citations_count: Number(item.citations_count) || 0,
+      abstract: safeString(item.abstract, 800),
+      metadata_completeness: Math.max(0, Math.min(1, Number(item.metadata_completeness) || 0)),
+      publication_type: safeString(item.publication_type, 80),
+      is_frontier: Boolean(item.is_frontier),
+    };
+  }).filter((candidate) => candidate.id && candidate.title);
 }
 
 function normalizeFilters(value: unknown): Filters {
@@ -123,40 +143,72 @@ function buildFacets(candidates: Candidate[]) {
   };
 }
 
-function normalizeAnswer(value: unknown) {
-  if (typeof value === "string") return { summary: value.slice(0, 600), key_points: [], caveats: [] };
+function normalizeAnswer(value: unknown, allowed: Set<string>): NormalizedAnswer {
+  if (typeof value === "string") return { summary: value.slice(0, 600), key_points: [], caveats: [], evidence_ids: [] };
   const answer = value && typeof value === "object" ? value as Record<string, unknown> : {};
+  const keyPoints: EvidenceClaim[] = Array.isArray(answer.key_points) ? answer.key_points.slice(0, 8).map((item): EvidenceClaim => {
+    if (typeof item === "string") return { text: item.slice(0, 240), evidence_ids: [] };
+    const claim = item && typeof item === "object" ? item as Record<string, unknown> : {};
+    const confidence = Number(claim.confidence);
+    const support = claim.support === "abstract" || claim.support === "metadata" || claim.support === "graph" ? claim.support : "unknown";
+    return {
+      text: safeString(claim.text || claim.claim, 240),
+      evidence_ids: Array.isArray(claim.evidence_ids) ? [...new Set(claim.evidence_ids.map((id) => safeString(id, 180)).filter((id) => allowed.has(id)))].slice(0, MAX_RESULTS) : [],
+      confidence: Number.isFinite(confidence) ? Math.max(0, Math.min(1, confidence)) : undefined,
+      support,
+    };
+  }).filter((item) => item.text) : [];
   return {
     summary: safeString(answer.summary, 600),
-    key_points: Array.isArray(answer.key_points) ? answer.key_points.slice(0, 8).map((item) => safeString(item, 240)) : [],
+    key_points: keyPoints,
     caveats: Array.isArray(answer.caveats) ? answer.caveats.slice(0, 8).map((item) => safeString(item, 240)) : [],
+    evidence_ids: Array.isArray(answer.evidence_ids) ? [...new Set(answer.evidence_ids.map((item) => safeString(item, 180)).filter((item) => allowed.has(item)))].slice(0, MAX_RESULTS) : [],
   };
 }
 
 function normalizeResults(value: unknown, allowed: Set<string>, candidates: Candidate[]): SearchResult[] {
   if (!Array.isArray(value)) return [];
-  return value.map((item: any) => {
-    const id = safeString(item?.id, 180);
+  return value.map((rawItem: unknown) => {
+    const item = rawItem && typeof rawItem === "object" ? rawItem as Record<string, unknown> : {};
+    const id = safeString(item.id, 180);
     const candidate = candidates.find((entry) => entry.id === id);
-    const evidence = Array.isArray(item?.evidence_ids) ? item.evidence_ids.map((entry: unknown) => safeString(entry, 180)).filter((entry) => allowed.has(entry)) : [];
+    const evidence = Array.isArray(item.evidence_ids) ? item.evidence_ids.map((entry) => safeString(entry, 180)).filter((entry) => allowed.has(entry)) : [];
     const evidenceIds = [...new Set([id, ...evidence].filter((entry) => allowed.has(entry)))];
-    const score = Number(item?.relevance_score);
+    const score = Number(item.relevance_score);
+    const signals = item.graph_signals && typeof item.graph_signals === "object" ? item.graph_signals as Record<string, unknown> : {};
     return {
       id,
       title: candidate?.title,
       year: candidate?.year,
       venue: candidate?.venue,
-      reason: safeString(item?.reason, 240),
+      reason: safeString(item.reason, 240),
       relevance_score: Number.isFinite(score) ? Math.max(0, Math.min(1, score)) : 0.5,
       evidence_ids: evidenceIds,
       graph_signals: {
         citation_count: candidate?.citations_count || 0,
-        is_frontier: Boolean(candidate?.is_frontier || item?.graph_signals?.is_frontier),
+        is_frontier: Boolean(candidate?.is_frontier || signals.is_frontier),
       },
     };
   }).filter((item) => allowed.has(item.id) && item.evidence_ids.length > 0)
     .filter((item, index, all) => all.findIndex((candidate) => candidate.id === item.id) === index)
     .slice(0, MAX_RESULTS);
+}
+
+function normalizeView(value: unknown, allowed: Set<string>) {
+  const view = value && typeof value === "object" ? value as Record<string, unknown> : {};
+  const timeline = Array.isArray(view.timeline) ? view.timeline.slice(0, 12).map((item) => {
+    const row = item && typeof item === "object" ? item as Record<string, unknown> : {};
+    return {
+      year: Number(row.year) || undefined,
+      ids: Array.isArray(row.ids) ? [...new Set(row.ids.map((id) => safeString(id, 180)).filter((id) => allowed.has(id)))].slice(0, MAX_RESULTS) : [],
+    };
+  }).filter((item) => item.year && item.ids.length) : [];
+  const gaps = Array.isArray(view.gaps) ? view.gaps.slice(0, 8).map((item) => safeString(item, 240)).filter(Boolean) : [];
+  return {
+    timeline,
+    comparison_columns: ["研究方法", "数据集", "指标", "优点", "局限"],
+    gaps,
+  };
 }
 
 function modeInstruction(mode: Mode) {
@@ -195,12 +247,14 @@ export async function POST(request: Request) {
     `用户问题：${query}`,
     `筛选条件：${JSON.stringify(filters)}`,
     modeInstruction(mode),
-    "所有 answer.key_points、answer.caveats 和结果 reason 都应能由候选元数据支持；缺少摘要或字段时明确写‘元数据不足，需要进一步核实’。",
+    "所有 answer.summary、answer.key_points、answer.caveats 和结果 reason 都应能由候选元数据支持；缺少摘要或字段时明确写‘元数据不足，需要进一步核实’。",
+    "answer.key_points 必须是对象数组，每条包含 text 和 evidence_ids；evidence_ids 只能使用候选论文 ID，并可附 confidence（0 到 1）和 support（abstract、metadata 或 graph）。",
+    "answer.evidence_ids 必须列出支撑总结和关键发现的候选论文 ID；如果没有足够证据就留空并在 caveats 中写‘需要进一步核实’。",
     `最多返回 ${limit} 篇论文。每篇结果必须包含 evidence_ids，且 evidence_ids 只能使用候选论文 ID；relevance_score 为 0 到 1。`,
     "只返回 JSON，不要 Markdown，格式为：",
     JSON.stringify({
       interpreted_query: { main_question: "", expanded_terms: [], sub_questions: [] },
-      answer: { summary: "", key_points: [], caveats: [] },
+      answer: { summary: "", key_points: [{ text: "", evidence_ids: [], confidence: 0, support: "metadata" }], caveats: [], evidence_ids: [] },
       results: [{ id: "候选ID", reason: "", relevance_score: 0.8, evidence_ids: ["候选ID"], graph_signals: { citation_count: 0, is_frontier: false } }],
       facets: { years: [], topics: [], venues: [] },
       view: { timeline: [], comparison_columns: ["研究方法", "数据集", "指标", "优点", "局限"], gaps: [] },
@@ -234,16 +288,21 @@ export async function POST(request: Request) {
   try {
     const parsed = parseModelJson(outputText(responsePayload));
     const results = normalizeResults(parsed?.results, allowed, candidates).slice(0, limit);
+    const answer = normalizeAnswer(parsed?.answer, allowed);
+    if (!answer.evidence_ids.length) answer.evidence_ids = [...new Set(results.flatMap((result) => result.evidence_ids))].slice(0, Math.min(limit, 8));
     return Response.json({
       interpreted_query: {
         main_question: safeString(parsed?.interpreted_query?.main_question || query, 240),
         expanded_terms: Array.isArray(parsed?.interpreted_query?.expanded_terms) ? parsed.interpreted_query.expanded_terms.slice(0, 16).map((item: unknown) => safeString(item, 80)) : [],
         sub_questions: Array.isArray(parsed?.interpreted_query?.sub_questions) ? parsed.interpreted_query.sub_questions.slice(0, 8).map((item: unknown) => safeString(item, 180)) : [],
       },
-      answer: normalizeAnswer(parsed?.answer),
+      answer,
       results,
-      facets: parsed?.facets || buildFacets(candidates),
-      view: parsed?.view || { timeline: [], comparison_columns: ["研究方法", "数据集", "指标", "优点", "局限"], gaps: [] },
+      // Facets are derived from the same bounded candidate set so the model
+      // cannot introduce a venue, year, or topic that was not retrieved.
+      facets: buildFacets(candidates),
+      view: normalizeView(parsed?.view, allowed),
+      source: "openai",
     });
   } catch {
     return jsonError("AI 返回了无法识别的结果，请换一种描述再试。", 502);

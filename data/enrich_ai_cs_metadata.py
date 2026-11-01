@@ -36,6 +36,29 @@ def load_json(path: Path) -> dict[str, Any]:
         return json.load(handle)
 
 
+def load_inputs(paths: list[Path]) -> dict[str, Any]:
+    """Load a single snapshot or the two hosted split snapshots."""
+    snapshots = [load_json(path) for path in paths]
+    if len(snapshots) == 1:
+        return snapshots[0]
+    nodes_by_id: dict[str, dict[str, Any]] = {}
+    edges: list[dict[str, Any]] = []
+    for snapshot in snapshots:
+        for node in snapshot.get("nodes", []):
+            node_id = str(node.get("id") or node.get("openalex_id") or "")
+            if node_id:
+                nodes_by_id[node_id] = node
+        edges.extend(snapshot.get("edges", []))
+    unique_edges = {(str(edge.get("source")), str(edge.get("target"))): edge for edge in edges if edge.get("source") and edge.get("target")}
+    merged = dict(snapshots[0])
+    merged["nodes"] = list(nodes_by_id.values())
+    merged["edges"] = list(unique_edges.values())
+    merged.setdefault("stats", {})["nodes"] = len(merged["nodes"])
+    merged.setdefault("stats", {})["edges"] = len(merged["edges"])
+    merged.setdefault("provenance", {})["input_parts"] = [str(path) for path in paths]
+    return merged
+
+
 def write_json(path: Path, value: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with gzip.open(path, "wt", encoding="utf-8", compresslevel=6) if path.suffix == ".gz" else open(path, "w", encoding="utf-8") as handle:
@@ -109,6 +132,12 @@ def merge_openalex(node: dict[str, Any], record: dict[str, Any]) -> None:
         node["venue"] = source["display_name"]
     if record.get("cited_by_count") is not None:
         node["cited_by_count"] = int(record.get("cited_by_count") or 0)
+    if record.get("publication_year"):
+        node["publication_year"] = int(record["publication_year"])
+    if record.get("publication_date"):
+        node["publication_date"] = record["publication_date"]
+    if record.get("type"):
+        node["type"] = record["type"]
     location = record.get("best_oa_location") or record.get("primary_location") or {}
     node["url"] = location.get("landing_page_url") or location.get("pdf_url") or node.get("url") or record.get("id", "")
     node["openalex_id"] = record.get("id") or node.get("openalex_id")
@@ -158,7 +187,7 @@ def openalex_batch(ids: list[str], mailto: str = "") -> list[dict[str, Any]]:
     params = {
         "filter": f"openalex_id:{filters}",
         "per-page": str(min(100, len(ids))),
-        "select": "id,title,doi,authorships,topics,concepts,primary_location,best_oa_location,abstract_inverted_index,cited_by_count",
+        "select": "id,title,doi,authorships,topics,concepts,primary_location,best_oa_location,abstract_inverted_index,cited_by_count,publication_year,publication_date,type,ids",
     }
     if mailto:
         params["mailto"] = mailto
@@ -177,7 +206,7 @@ def semantic_batch(ids: list[str], api_key: str = "") -> list[dict[str, Any]]:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--input", type=Path, default=Path("data/ai_cs_graph_200000.json.gz"))
+    parser.add_argument("--input", action="append", type=Path, help="Input snapshot; repeat for split snapshots")
     parser.add_argument("--output", type=Path, default=Path("data/ai_cs_graph_200000.enriched.json.gz"))
     parser.add_argument("--checkpoint", type=Path, default=Path("data/metadata_enrichment.checkpoint.json"))
     parser.add_argument("--batch-size", type=int, default=50)
@@ -187,7 +216,14 @@ def main() -> None:
     parser.add_argument("--mailto", default=os.environ.get("OPENALEX_MAILTO", ""))
     args = parser.parse_args()
 
-    snapshot = load_json(args.input)
+    input_paths = args.input or [
+        Path("data/ai_cs_graph_200000.json.gz") if Path("data/ai_cs_graph_200000.json.gz").exists() else Path("data/ai_cs_graph_200000.part1.json.gz"),
+    ]
+    if args.input is None and input_paths[0].name.endswith("part1.json.gz"):
+        part2 = input_paths[0].with_name(input_paths[0].name.replace("part1", "part2"))
+        if part2.exists():
+            input_paths.append(part2)
+    snapshot = load_inputs(input_paths)
     nodes = snapshot.get("nodes", [])
     by_openalex = {openalex_key(node.get("openalex_id") or node.get("id")): node for node in nodes if openalex_key(node.get("openalex_id") or node.get("id"))}
     by_doi = {normalize_doi(node.get("doi")): node for node in nodes if normalize_doi(node.get("doi"))}
