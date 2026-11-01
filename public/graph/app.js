@@ -605,9 +605,9 @@ function localAiPayload(query, mode, filters, candidates) {
     answer: {
       summary,
       key_points: [
-        `当前模式：${modeLabel}`,
-        years.length ? `候选年份覆盖 ${years[0]}–${years[years.length - 1]}。` : "当前筛选没有足够的年份信息。",
-        "本地回退只使用论文元数据，不会生成库外论文或虚构摘要。"
+        { text: `当前模式：${modeLabel}`, evidence_ids: resultItems.slice(0, 1).map((item) => item.id), support: "metadata" },
+        { text: years.length ? `候选年份覆盖 ${years[0]}–${years[years.length - 1]}。` : "当前筛选没有足够的年份信息。", evidence_ids: resultItems.slice(0, 6).map((item) => item.id), support: "metadata" },
+        { text: "本地回退只使用论文元数据，不会生成库外论文或虚构摘要。", evidence_ids: resultItems.slice(0, 1).map((item) => item.id), support: "metadata" }
       ],
       caveats: ["摘要和语义向量尚未完全补齐，结论需要打开证据论文核实。"],
       evidence_ids: resultItems.slice(0, 6).map((item) => item.id)
@@ -658,7 +658,14 @@ function renderAiResults() {
   const caveats = Array.isArray(answer.caveats) ? answer.caveats : [];
   const evidenceIds = [...new Set((answer.evidence_ids || []).map(String).filter((id) => state.data.nodes.some((node) => node.id === id)))].slice(0, 8);
   const evidenceLinks = evidenceIds.length ? `<div class="ai-evidence-links"><span>证据论文</span>${evidenceIds.map((id) => `<button type="button" data-ai-evidence="${escapeHtml(id)}">${escapeHtml(shortTitle(state.data.nodes.find((node) => node.id === id)?.title || id))}</button>`).join("")}</div>` : `<div class="ai-evidence-missing">回答未提供可展开的证据论文，需要进一步核实。</div>`;
-  const answerBlock = `<div class="ai-answer-block"><p class="ai-search-answer">${escapeHtml(answer.summary || state.aiAnswer || "")}</p>${keyPoints.length ? `<ul>${keyPoints.slice(0, 4).map((item) => `<li>${escapeHtml(typeof item === "string" ? item : item?.text || "")}</li>`).join("")}</ul>` : ""}${caveats.length ? `<p class="ai-caveat">${escapeHtml(caveats[0])}</p>` : ""}${evidenceLinks}</div>`;
+  const claimMarkup = keyPoints.slice(0, 4).map((item) => {
+    const claim = typeof item === "string" ? { text: item, evidence_ids: [] } : item || { text: "", evidence_ids: [] };
+    const claimIds = [...new Set((claim.evidence_ids || []).map(String).filter((id) => state.data.nodes.some((node) => node.id === id)))].slice(0, 4);
+    const claimEvidence = claimIds.length ? `<span class="ai-claim-evidence">证据 ${claimIds.map((id) => `<button type="button" data-ai-evidence="${escapeHtml(id)}">${escapeHtml(shortTitle(state.data.nodes.find((node) => node.id === id)?.title || id))}</button>`).join("")}</span>` : `<span class="ai-claim-unverified">需要进一步核实</span>`;
+    const confidence = Number.isFinite(Number(claim.confidence)) ? ` · 置信度 ${Math.round(Number(claim.confidence) * 100)}%` : "";
+    return `<li>${escapeHtml(claim.text || "")}${confidence}${claimEvidence}</li>`;
+  }).join("");
+  const answerBlock = `<div class="ai-answer-block"><p class="ai-search-answer">${escapeHtml(answer.summary || state.aiAnswer || "")}</p>${claimMarkup ? `<ul>${claimMarkup}</ul>` : ""}${caveats.length ? `<p class="ai-caveat">${escapeHtml(caveats[0])}</p>` : ""}${evidenceLinks}</div>`;
   const items = state.aiResults.slice(0, 12).map((result) => {
     const id = String(result.id || "");
     const checked = workspaceHas("compare", id) ? " checked" : "";

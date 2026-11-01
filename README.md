@@ -32,7 +32,8 @@ AI 搜索现在支持五种研究模式：找相关论文、梳理文献综述�
 
 ```powershell
 python data/enrich_ai_cs_metadata.py `
-  --input data/ai_cs_graph_200000.json.gz `
+  --input data/ai_cs_graph_200000.part1.json.gz `
+  --input data/ai_cs_graph_200000.part2.json.gz `
   --output data/ai_cs_graph_200000.enriched.json.gz `
   --checkpoint data/metadata_enrichment.checkpoint.json `
   --provider both --batch-size 50
@@ -56,6 +57,16 @@ python data/build_search_index.py `
   --input data/ai_cs_graph_200000.part1.json.gz `
   --input data/ai_cs_graph_200000.part2.json.gz `
   --output data/search_index.json.gz
+```
+
+运行本地回退检索的可重复评测。当前查询集使用术语覆盖率作为临时标签；补充人工相关性标注后，查询文件可以加入 `expected_ids`，脚本会同时输出 Recall@K：
+
+```powershell
+python data/evaluate_retrieval.py `
+  --input data/ai_cs_graph_200000.part1.json.gz `
+  --input data/ai_cs_graph_200000.part2.json.gz `
+  --queries data/retrieval_eval_queries.json `
+  --output outputs/retrieval-eval.json
 ```
 
 ## 更新论文数据

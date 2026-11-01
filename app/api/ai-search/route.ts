@@ -36,9 +36,16 @@ type SearchResult = {
   graph_signals: { citation_count: number; is_frontier: boolean };
 };
 
+type EvidenceClaim = {
+  text: string;
+  evidence_ids: string[];
+  confidence?: number;
+  support?: "abstract" | "metadata" | "graph" | "unknown";
+};
+
 type NormalizedAnswer = {
   summary: string;
-  key_points: string[];
+  key_points: EvidenceClaim[];
   caveats: string[];
   evidence_ids: string[];
 };
@@ -139,9 +146,21 @@ function buildFacets(candidates: Candidate[]) {
 function normalizeAnswer(value: unknown, allowed: Set<string>): NormalizedAnswer {
   if (typeof value === "string") return { summary: value.slice(0, 600), key_points: [], caveats: [], evidence_ids: [] };
   const answer = value && typeof value === "object" ? value as Record<string, unknown> : {};
+  const keyPoints: EvidenceClaim[] = Array.isArray(answer.key_points) ? answer.key_points.slice(0, 8).map((item): EvidenceClaim => {
+    if (typeof item === "string") return { text: item.slice(0, 240), evidence_ids: [] };
+    const claim = item && typeof item === "object" ? item as Record<string, unknown> : {};
+    const confidence = Number(claim.confidence);
+    const support = claim.support === "abstract" || claim.support === "metadata" || claim.support === "graph" ? claim.support : "unknown";
+    return {
+      text: safeString(claim.text || claim.claim, 240),
+      evidence_ids: Array.isArray(claim.evidence_ids) ? [...new Set(claim.evidence_ids.map((id) => safeString(id, 180)).filter((id) => allowed.has(id)))].slice(0, MAX_RESULTS) : [],
+      confidence: Number.isFinite(confidence) ? Math.max(0, Math.min(1, confidence)) : undefined,
+      support,
+    };
+  }).filter((item) => item.text) : [];
   return {
     summary: safeString(answer.summary, 600),
-    key_points: Array.isArray(answer.key_points) ? answer.key_points.slice(0, 8).map((item) => safeString(item, 240)) : [],
+    key_points: keyPoints,
     caveats: Array.isArray(answer.caveats) ? answer.caveats.slice(0, 8).map((item) => safeString(item, 240)) : [],
     evidence_ids: Array.isArray(answer.evidence_ids) ? [...new Set(answer.evidence_ids.map((item) => safeString(item, 180)).filter((item) => allowed.has(item)))].slice(0, MAX_RESULTS) : [],
   };
@@ -229,12 +248,13 @@ export async function POST(request: Request) {
     `筛选条件：${JSON.stringify(filters)}`,
     modeInstruction(mode),
     "所有 answer.summary、answer.key_points、answer.caveats 和结果 reason 都应能由候选元数据支持；缺少摘要或字段时明确写‘元数据不足，需要进一步核实’。",
+    "answer.key_points 必须是对象数组，每条包含 text 和 evidence_ids；evidence_ids 只能使用候选论文 ID，并可附 confidence（0 到 1）和 support（abstract、metadata 或 graph）。",
     "answer.evidence_ids 必须列出支撑总结和关键发现的候选论文 ID；如果没有足够证据就留空并在 caveats 中写‘需要进一步核实’。",
     `最多返回 ${limit} 篇论文。每篇结果必须包含 evidence_ids，且 evidence_ids 只能使用候选论文 ID；relevance_score 为 0 到 1。`,
     "只返回 JSON，不要 Markdown，格式为：",
     JSON.stringify({
       interpreted_query: { main_question: "", expanded_terms: [], sub_questions: [] },
-      answer: { summary: "", key_points: [], caveats: [], evidence_ids: [] },
+      answer: { summary: "", key_points: [{ text: "", evidence_ids: [], confidence: 0, support: "metadata" }], caveats: [], evidence_ids: [] },
       results: [{ id: "候选ID", reason: "", relevance_score: 0.8, evidence_ids: ["候选ID"], graph_signals: { citation_count: 0, is_frontier: false } }],
       facets: { years: [], topics: [], venues: [] },
       view: { timeline: [], comparison_columns: ["研究方法", "数据集", "指标", "优点", "局限"], gaps: [] },
