@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="theme-color" content="#080c16" />
     <title>AI Research Graph</title>
-    <link rel="stylesheet" href="styles.css?v=26" />
+    <link rel="stylesheet" href="styles.css?v=28" />
     <script src="https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js"></script>
   </head>
   <body>
@@ -136,12 +136,20 @@
               <label class="ai-control"><span>Venue</span><input id="aiVenueFilter" class="ai-filter-input" type="search" placeholder="可选，如 NeurIPS" autocomplete="off" /></label>
             </div>
             <div class="ai-interpretation" id="aiQueryInterpretation" hidden></div>
+            <div class="ai-facets" id="aiFacets" hidden></div>
             <p class="ai-search-status" id="aiSearchStatus" role="status" aria-live="polite"></p>
             <div class="ai-search-results" id="aiSearchResults" hidden></div>
             <div class="ai-workspace-strip">
               <span><strong id="aiCompareCount">0</strong> 篇待比较</span>
               <button type="button" class="text-button" id="aiCompareButton" disabled>生成比较表</button>
-              <button type="button" class="text-button" id="aiExportButton">导出检索结果</button>
+              <select id="aiExportFormat" class="ai-export-select" aria-label="导出格式">
+                <option value="csv">CSV</option>
+                <option value="bibtex">BibTeX</option>
+                <option value="markdown">Markdown 综述</option>
+                <option value="notes">研究笔记</option>
+              </select>
+              <button type="button" class="text-button" id="aiExportButton">导出</button>
+              <button type="button" class="text-button" id="aiSaveQueryButton">保存问题</button>
             </div>
           </section>
           <div class="graph-panel panel" id="graphPanel">
@@ -197,6 +205,14 @@
             </div>
             <div class="related-section">
               <div class="related-heading"><span>相邻论文</span><span class="related-count" id="relatedCount">0</span></div>
+              <div class="related-tools" role="tablist" aria-label="论文关系视图">
+                <button type="button" class="related-tool active" data-relation-mode="related">相邻</button>
+                <button type="button" class="related-tool" data-relation-mode="foundations">基础</button>
+                <button type="button" class="related-tool" data-relation-mode="followups">后续</button>
+                <button type="button" class="related-tool" data-relation-mode="citing">高引引用</button>
+                <button type="button" class="related-tool" data-relation-mode="same-topic">同主题</button>
+                <button type="button" class="related-tool" data-relation-mode="frontier">前沿</button>
+              </div>
               <div class="related-list" id="relatedList"></div>
             </div>
             <button class="neighborhood-button" id="neighborhoodButton" type="button">在图中查看 1 跳邻域</button>
@@ -210,6 +226,6 @@
         <div class="footer-note">引用关系来自 OpenAlex 与 CitationCS 的公开快照 · 目标窗口 2016–2026</div>
       </footer>
     </div>
-    <script src="app.js?v=26"></script>
+    <script src="app.js?v=28"></script>
   </body>
 </html>
