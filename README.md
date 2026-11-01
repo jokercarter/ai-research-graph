@@ -1,143 +1,265 @@
 # AI Research Graph
 
-AI Research Graph 是一个以真实论文引用边为核心的 AI / CS 文献关系图网站。`source -> target` 表示前者引用后者；边保留 OpenAlex `referenced_works` 或 CitationCS `ref_lst` 的来源字段。网站提供可交互的图谱工作台，后续可将同一数据层接入 REST API 和 MCP。
+面向科研人员的 **AI / 计算机科学论文搜索网站**：快速找到某个方向的关键论文和最新进展，从一篇论文出发找到相关工作，并用 Claude 基于检索到的论文回答研究问题。
 
-## 运行网站
+- 收录 **276,668 篇** 2024-11 至 2026-10 在 arXiv 首次发布的 AI 相关论文（全部带摘要），**每月更新一次**
+- 网站是纯静态页面 + 分片数据：访问者只下载用到的小文件（一次搜索约 1–3 MB），手机也能用
+- AI 功能只使用 **Claude**：本地可用 Claude 账号（邮箱）登录，用包月订阅；公开部署可用 API key
 
-图谱界面源文件仍位于 `frontend/`，可以用静态服务器快速查看 UI：
+---
 
-```powershell
-cd frontend
-python -m http.server 4173
+## 目录
+
+- [功能](#功能)
+- [快速开始（本地）](#快速开始本地)
+- [连接 Claude](#连接-claude)
+- [部署到网站](#部署到网站)
+- [每月更新数据](#每月更新数据)
+- [工作原理](#工作原理)
+- [项目结构](#项目结构)
+- [服务端接口](#服务端接口)
+- [隐私与安全](#隐私与安全)
+- [已知局限与后续计划](#已知局限与后续计划)
+- [旧版组件](#旧版组件)
+
+---
+
+## 功能
+
+| 页面 | 地址 | 说明 |
+|---|---|---|
+| 首页 | `#/` | 搜索框、正在升温的研究方向、按领域浏览入口；关注的方向会显示在这里 |
+| 搜索 | `#/search?q=…` | 关键词检索（标题权重更高，支持短语），支持中文提问；按年份、arXiv 主分类筛选，按相关度或时间排序 |
+| 论文详情 | `#/paper/<arXiv 编号>` | 摘要、作者、分类、arXiv / PDF / Semantic Scholar / DOI 链接、复制 BibTeX、10 篇相关论文、"问 AI 关于这篇论文" |
+| 升温方向 | `#/topics`、`#/trend/<id>` | 80 个近 3 个月出现占比增长最快的技术短语（如 *on-policy distillation*、*VLA policies*），含每月趋势图和代表论文 |
+| 领域最新 | `#/category/<分类>` | 某个 arXiv 主分类（如 cs.CV）按时间倒序的全部论文 |
+| AI 问答 | `#/ask` | Claude 基于站内检索到的论文回答问题，每条结论带 `[n]` 出处；多轮追问、延伸问题、一键收藏参考论文；可切换 Sonnet / Opus / Haiku |
+| 我的文献 | `#/library` | 收藏的论文、关注的方向；导出 BibTeX / CSV，备份与导入工作区 |
+| 数据说明 | `#/about` | 收录范围、数据来源、算法说明、隐私说明 |
+
+搜索结果页还有"AI 研究助手"（梳理综述、找相关论文、比较方法、找研究空白、找前沿），基于前 30 条结果生成；它需要网站服务器配置了 Claude API key，本地预览请使用 AI 问答页。
+
+收藏、关注和对话记录只保存在当前浏览器（localStorage），不需要注册账号。
+
+---
+
+## 快速开始（本地）
+
+**需要**：Windows / macOS / Linux，Python 3.10+（只用标准库，不用装依赖）。
+
+### Windows：双击启动
+
+双击项目根目录的 **`启动网站.bat`**。它会：
+
+1. 启动本地服务（默认 `http://localhost:4173/`，端口被占用时自动换下一个）
+2. 用默认浏览器打开 AI 问答页，并弹出"连接 Claude"窗口
+
+关闭黑色命令行窗口即停止网站。
+
+### 命令行启动
+
+```bash
+python serve_local.py                      # 打开 http://localhost:4173/
+python serve_local.py --open "#/ask"       # 启动后自动打开某个页面
+PORT=8080 python serve_local.py            # 指定端口（Windows PowerShell：$env:PORT=8080）
 ```
 
-打开 `http://localhost:4173/`。前端是 buildless HTML/CSS/JS，使用 D3 CDN 绘制有向图。
+只想看静态页面（不带 AI）也可以：`cd public/research && python -m http.server 4173`。这时中文检索会改用内置词典翻译。
 
-Hosted Site 使用 Vinext Worker 提供同源的 `/api/ai-search` 服务端接口。AI 搜索框会把当前快照中的候选论文发送到 OpenAI API 进行语义排序；`OPENAI_API_KEY` 只通过 Sites 的环境变量注入 Worker，不会进入浏览器代码。部署形态的本地构建命令为：
+---
+
+## 连接 Claude
+
+点页面右上角 **"连接 Claude"**，选择一种方式：
+
+| 方式 | 适用 | 费用 | 说明 |
+|---|---|---|---|
+| **用 Claude 账号（邮箱）登录** | 本地使用 | Claude Pro / Max 包月订阅 | 点"安装并用邮箱登录"：未安装 Claude Code 时自动安装，然后在浏览器里输入邮箱和验证码登录。完成后点"我已登录，检查状态" |
+| **我的 Claude API key** | 本地或公开网站的访客 | 按用量计费 | key 只保存在访客自己的浏览器，请求从浏览器**直接**发给 Anthropic，不经过本网站服务器 |
+| **网站提供的模型** | 公开部署 | 站点运营者付费 | 服务器配置了 `ANTHROPIC_API_KEY` 时出现 |
+
+**切换模型**：AI 问答页顶部的"模型"下拉框可在 **Sonnet 5.5**（默认，均衡）、**Opus 5.5**（最强，较慢、更耗额度）、**Haiku 5.5**（最快）之间切换，下一个问题生效；每条回答下方会显示实际使用的模型。邮箱登录模式下，第一步"生成检索词"固定用 Haiku 以节省时间和额度。
+
+> 包月订阅只供本人使用。部署成公开网站后，服务器上没有你登录的 Claude Code，访客需要用 API key。
+
+### 本地配置文件 `.env.local`（可选）
+
+放在项目根目录（已被 `.gitignore` 忽略）：
+
+```ini
+ANTHROPIC_API_KEY=sk-ant-...        # 让本地服务器以"网站提供的模型"方式调用 Claude
+ANTHROPIC_MODEL=claude-sonnet-5-5   # 默认模型
+AI_PROVIDER=mock                    # 演示模式：不调用任何模型，用于检查界面
+```
+
+---
+
+## 部署到网站
+
+网站外层是 Vinext（Next.js 风格）应用，运行在 Cloudflare Workers（OpenAI Sites 托管）上；首页 `app/page.tsx` 以 iframe 加载 `public/research/index.html`，`public/research/data` 中的分片作为静态资源发布。
 
 ```powershell
 npm ci
 node "$env:USERPROFILE\.codex\plugins\cache\openai-curated-remote\sites\1.1.2\scripts\build-site.mjs"
 ```
 
-AI 搜索现在支持五种研究模式：找相关论文、梳理文献综述、比较研究方法、寻找研究空白和寻找研究前沿。请求会携带年份、主题和最低引用数筛选；返回的每条结论都保留 `evidence_ids`，前端可以直接定位论文节点、展开 1–3 跳邻域并加入对比。OpenAI 不可用时，页面会使用同一批候选的本地标题、主题、作者、年份和引用量检索，并明确标注为本地回退结果。
+**环境变量**（在站点设置中配置，只在服务端使用，不会进入浏览器）：
 
-浏览器科研工作区使用本地存储保存收藏、对比列表、笔记、已读状态、搜索历史和保存的研究问题。检索结果可导出 CSV、BibTeX、Markdown 文献综述草稿和研究笔记；右侧详情可以切换基础论文、后续论文、高引引用、同主题无直接引用和主题前沿。单篇论文的来源、更新时间、元数据完整度和摘要状态会显示在右侧详情面板。没有摘要的论文保持为空，界面会提示“需要进一步核实”，不会生成猜测摘要。
+| 变量 | 必需 | 说明 |
+|---|---|---|
+| `ANTHROPIC_API_KEY` | 否 | 配置后访客可直接使用"网站提供的模型"，搜索页的 AI 研究助手、中文检索改写也会走 Claude |
+| `ANTHROPIC_MODEL` | 否 | 默认 `claude-sonnet-5-5` |
 
-本地回退检索使用标题、摘要、作者、主题、venue、年份、引用量和图谱度数的混合排序，并对“视觉语言模型的对齐方法”和“联邦学习中的隐私与通信效率”等中文问法做公开术语扩展。OpenAI 结果的总结会携带可展开的 `evidence_ids`；接口会过滤库外 ID。
+不配置 key 时网站照常可用：搜索、浏览、升温方向都不依赖模型；AI 问答由访客填写自己的 key；中文检索回退到内置词典。
 
-科研工作流还包括研究问题拆解、推荐阅读顺序、可编辑证据矩阵、阅读队列和排除原因。以上状态保存在浏览器本地工作区，证据矩阵字段可以按论文逐行修改；排除的论文会从后续本地检索候选中隐藏，避免重复筛选。
+服务端的 AI 接口有按访客的限流（问答每分钟 10 次、检索词改写 30 次、研究助手 8 次），避免公开后被刷费用。
 
-## 补充公开元数据
+---
 
-200,000 篇快照的引用边不因元数据补全而改变。使用下面的脚本可以按 OpenAlex 批量补充摘要、作者、主题、venue、DOI、开放链接、引用量和字段完整度，并以 Semantic Scholar 的 DOI/arXiv 结果作为补充。脚本支持断点文件，缺失字段会继续留空：
+## 每月更新数据
 
-```powershell
-python data/enrich_ai_cs_metadata.py `
-  --input data/ai_cs_graph_200000.part1.json.gz `
-  --input data/ai_cs_graph_200000.part2.json.gz `
-  --output data/ai_cs_graph_200000.enriched.json.gz `
-  --checkpoint data/metadata_enrichment.checkpoint.json `
-  --provider both --batch-size 50
+在自己的电脑上运行（不需要任何 API key）：
+
+```bash
+pip install numpy
+python data/pipeline/monthly_update.py
 ```
 
-先做小批量检查：
+它会：
 
-```powershell
-python data/enrich_ai_cs_metadata.py `
-  --max-nodes 100 `
-  --output outputs/metadata-enrichment-smoke.json.gz `
-  --checkpoint outputs/metadata-enrichment-smoke.checkpoint.json
+1. 通过 arXiv OAI-PMH **增量**拉取上次运行之后新增或更新的论文（状态保存在 `data/work/`）
+2. 重建最近 **24 个完整月**的网站数据到 `public/research/data`（文档、检索索引、升温方向、清单）
+
+通常 10–20 分钟。之后照常提交并部署。首次在一台新电脑上运行时会从 2016-11 开始全量拉取，耗时较长（约 2–3 小时）。
+
+也可以分阶段手动运行：
+
+```bash
+python data/pipeline/harvest_arxiv.py --until 2026-11-30
+python data/pipeline/build_simple.py all --start 2024-12-01 --end 2026-11-30
+# 或单独运行某个阶段：docs | cards | index | shards | trends1 | trends2
 ```
 
-公开 API 有速率限制；可以设置 `OPENALEX_MAILTO` 和 `SEMANTIC_SCHOLAR_API_KEY`，并保留 checkpoint 后继续运行。生成新的快照后，将它压缩复制为前端的 `data.sample.json.gz` 或两个分片即可被页面读取。
+---
 
-生成独立的检索索引（用于后续服务端检索或离线批处理；网页仍保留关键词回退路径）：
+## 工作原理
 
-```powershell
-python data/build_search_index.py `
-  --input data/ai_cs_graph_200000.part1.json.gz `
-  --input data/ai_cs_graph_200000.part2.json.gz `
-  --output data/search_index.json.gz
+### 数据
+
+- **来源**：arXiv OAI-PMH（`set=cs`），保留主分类或交叉分类属于 cs.AI、cs.LG、cs.CL、cs.CV、cs.RO、cs.IR、cs.MA、cs.NE、stat.ML 等 AI 相关方向的论文
+- **发布时间**：按 arXiv 编号中的年月判断首次发布月份（OAI 的 `created` 字段对应最新版本，不能用来判断首发）；同一论文多个版本只保留最新元数据
+- **收录窗口**：最近 24 个完整月
+
+### 网站数据文件（`public/research/data`）
+
+| 文件 | 内容 |
+|---|---|
+| `manifest.json` | 快照版本、论文数、分片大小、分类名称 |
+| `meta.bin.gz` | 每篇论文 4 字节：年份、月份、arXiv 主分类、是否本月新增（筛选和排序用） |
+| `t/NNNN.json.gz` | 2,048 个检索分片：按词项哈希分配，存每个词的倒排表（论文编号差值 + 量化 BM25 分数） |
+| `l/NNNN.json.gz` | 结果卡片（每片 400 篇）：标题、日期、分类、作者、摘要片段 |
+| `p/NNNN.json.gz` | 论文详情（每片 200 篇）：完整摘要、作者、分类、备注、DOI |
+| `k/XX.json.gz` | arXiv 编号 → 本快照中的论文编号（保证链接在每月更新后仍有效） |
+| `trends.json.gz` | 升温方向、每月论文数、各分类月度统计 |
+
+论文按 arXiv 主分类分组、组内按时间倒序编号，因此"领域最新"页面直接读取连续的编号区间。
+
+### 检索与相关论文
+
+- 字段加权 BM25：标题词权重 3 倍，摘要权重 1 倍；标题中的相邻词对（如 *diffusion model*）单独建索引以匹配短语；每个词最多保留 1,500 篇得分最高的论文
+- 排序时奖励覆盖了更多查询词的论文；中文查询先由 Claude 改写成英文检索词，失败时用内置的约 120 条中英术语词典
+- 论文页的"相关论文"：用该论文的标题和摘要开头在站内检索，排除自身
+
+### 升温方向
+
+统计每篇论文标题和摘要中的技术短语（二元词组），比较**近 3 个月**与**之前 12 个月**中包含该短语的论文**占比**（已扣除论文总量的整体增长）；要求短语多次出现在论文标题中，以过滤"percentage points"这类写作套话，并合并单复数等重复短语。它反映的是关注度上升，不代表质量判断。
+
+### AI 问答流程
+
+1. **生成检索词**：Claude 把问题（中文或英文）改写成 2–4 组英文检索词
+2. **站内检索**：浏览器用这些词在索引中检索并做排名融合，取最相关的 14 篇，读取完整摘要
+3. **回答**：Claude 只依据这 14 篇论文回答，用 `[n]` 标注出处；资料覆盖不到的部分会明确说明，并给出延伸问题
+
+---
+
+## 项目结构
+
+```
+AI Research Graph/
+├── public/research/          新网站（静态，无需构建）
+│   ├── index.html  styles.css
+│   ├── core.js               数据加载、分词、检索、本地工作区
+│   ├── app.js                页面与路由（首页、搜索、论文、升温方向、文献库）
+│   ├── ask.js                AI 问答
+│   ├── connect.js            "连接 Claude"窗口与浏览器直连 Anthropic
+│   └── data/                 每月生成的分片数据（约 230 MB）
+├── data/pipeline/            数据管线
+│   ├── harvest_arxiv.py      arXiv OAI-PMH 增量拉取（可断点续传）
+│   ├── build_simple.py       生成网站数据（当前版本使用）
+│   ├── monthly_update.py     每月更新入口
+│   ├── textutil.py           分词规则（与 core.js 保持一致）
+│   └── common.py  corpus_db.py  s2_enrich.py  embed.py  related.py  frontier.py  build_site.py
+│                             完整版管线（引用关系、语义向量、主题聚类），尚未用于当前网站
+├── app/                      Vinext 应用（部署用）
+│   ├── page.tsx              以 iframe 加载 /research/
+│   └── api/
+│       ├── ask/              AI 问答（检索词规划 + 流式回答）
+│       ├── query-rewrite/    中文问题 → 英文检索词
+│       └── ai-search/        搜索页的 AI 研究助手
+├── lib/llm.ts                Claude（及 OpenAI）调用封装
+├── lib/rate-limit.ts         按访客限流
+├── serve_local.py            本地服务：静态页面 + 与线上一致的 AI 接口 + Claude Code 登录
+├── 启动网站.bat               Windows 一键启动
+└── data/work/                管线中间数据（已忽略，不提交）
 ```
 
-运行本地回退检索的可重复评测。当前查询集使用术语覆盖率作为临时标签；补充人工相关性标注后，查询文件可以加入 `expected_ids`，脚本会同时输出 Recall@K：
+---
 
-```powershell
-python data/evaluate_retrieval.py `
-  --input data/ai_cs_graph_200000.part1.json.gz `
-  --input data/ai_cs_graph_200000.part2.json.gz `
-  --queries data/retrieval_eval_queries.json `
-  --output outputs/retrieval-eval.json
-```
+## 服务端接口
 
-## 更新论文数据
+| 接口 | 方法 | 说明 |
+|---|---|---|
+| `/api/ask` | GET | 返回可用的服务器端模型 |
+| `/api/ask` | POST `{phase:"plan", question, history, model}` | 返回英文检索词 `{queries, language}` |
+| `/api/ask` | POST `{phase:"answer", question, history, sources, model}` | 流式返回回答文本；响应头 `x-model` 为实际使用的模型 |
+| `/api/query-rewrite` | POST `{query}` | 中文问题 → `{english, terms}` |
+| `/api/ai-search` | POST `{query, mode, candidates}` | 搜索页 AI 研究助手（综述 / 相关 / 比较 / 空白 / 前沿） |
+| `/api/claude/status` | GET | **仅本地**：Claude Code 是否安装、是否已登录 |
+| `/api/claude/login` | POST | **仅本地**：打开安装 / 登录窗口 |
 
-默认快照为 **200,000 个近十年 AI 优先论文节点、435,731 条有向引用边**。节点来自 CitationCS 的 Computer Science 记录，优先保留 Artificial Intelligence、machine learning、deep learning、computer vision、natural language、robotics 和 neural 等主题，并按年份比例抽样；边只复制快照中的真实 `ref_lst` 引用关系。网站保留快照中的全部节点，画布初始按引用量显示前 100 个节点，也可切换到 200、500 或 1,000 个节点；搜索、主题筛选或邻域展开后的当前簇若超过 20 个节点，会按引用边方向取拓扑排序最前层，并叠加数据源提供的获奖论文信号，用黄色大节点标记前沿论文；搜索还会展开相关引用节点并显示少量标题，年份筛选和 1–3 跳邻域用于继续探索关系。
+本地专用接口要求请求头 `x-airg: 1`，其他网站无法跨域触发。
 
-```powershell
-python data/collect_openalex_graph.py `
-  --search "artificial intelligence machine learning" `
-  --from-year 2016 --to-year 2026 --pages 10 --per-page 100 `
-  --include-external --out data/ai_graph.json
-```
+---
 
-当前递归快照先搜索近年的 AI/CS 论文，再沿每篇论文的 `referenced_works` 批量抓取两层引用论文：
+## 隐私与安全
 
-```powershell
-python data/collect_recursive_graph.py `
-  --target-nodes 7500 --seed-per-page 200 --seed-limit 1000 `
-  --max-depth 2 --max-fetch-per-layer 6000 `
-  --out data/recursive_graph_10000.json
-```
+- 搜索在浏览器中完成，查询词不会发到服务器
+- 使用 AI 时，问题和检索到的论文标题、摘要会发送给 Claude（经网站服务器，或在"我的 API key"模式下由浏览器直接发送）
+- 访客的 API key 只保存在其浏览器中（可选择关闭标签页即清除），只发送给 `api.anthropic.com`
+- 服务器端的 key 只通过环境变量注入；`.env.local`、`data/work/` 不会提交到仓库
+- 邮箱登录模式下，Claude Code 在空的临时目录中运行，提示词要求不调用工具、不读写文件
 
-如需生成当前网站使用的“递归图 + 年度 CS 目录样本”联合快照：
+---
 
-```powershell
-python data/merge_recursive_catalog.py `
-  --recursive data/recursive_graph_10000.json `
-  --catalog data/cs_field_catalog_2200.json `
-  --citationcs data/citationcs_ai_cs_slice_50000.json.gz `
-  --out data/ai_cs_graph_citationcs_60000.json.gz
-```
+## 已知局限与后续计划
 
-CitationCS 离线底座（Zenodo 记录 10.5281/zenodo.16537950）可以在 OpenAlex API 配额不可用时扩展 CS 引用网络。下载和递推命令如下；原始 ZIP 保存在仓库外，避免进入 Git：
+当前是简化版，以下功能还没有上线：
 
-```powershell
-python data/download_citationcs.py `
-  --out D:\research\citation_cache\citation_cs.zip
-python data/import_citationcs.py `
-  --archive D:\research\citation_cache\citation_cs.zip `
-  --existing data/ai_cs_graph_citationcs_60000.json.gz `
-  --out data/citationcs_ai_cs_slice_50000.json.gz `
-  --depth 2 --max-seeds 10000 --max-nodes 50000
-```
+- **被引数和引用关系**：论文页暂不显示，可通过 Semantic Scholar 链接查看。`s2_enrich.py` 已能批量获取，但全量拉取较慢
+- **语义相关论文**：现在的相关论文基于关键词；`embed.py` + `related.py` 可加入语义向量、共被引和文献耦合
+- **主题聚类**：升温方向基于短语统计；`frontier.py` 可改为按语义聚类的研究方向
+- **收录范围**：只有近两年的 arXiv 论文；未上传 arXiv 的会议 / 期刊论文不在库中
+- 搜索页的"AI 研究助手"在本地预览中不可用（请用 AI 问答）
+- 账号与跨设备同步、邮件订阅提醒
 
-当前网站使用的 200,000 篇快照可由本地 CitationCS 压缩档案重建。它只保留目标窗口内的 AI 优先 Computer Science 记录，并把旧快照中重叠论文的 OpenAlex 摘要、 DOI、奖项和引用计数作为补充元数据：
+---
 
-```powershell
-python data/build_recent_ai_cs_catalogue.py `
-  --archive D:\research\citation_cache\citation_cs.parallel.zip `
-  --existing data/ai_cs_graph_citationcs_60000.json.gz `
-  --target-nodes 200000 `
-  --out data/ai_cs_graph_200000.json.gz
-```
+## 旧版组件
 
-如需合并多个主题切片，也可以使用：
+以下是项目早期的引用图谱版本，仍保留在仓库中，但不再是网站入口：
 
-```powershell
-python data/merge_openalex_graphs.py `
-  --inputs data/*_graph_*.json `
-  --out data/ai_cs_graph_expanded.json
-```
+- `frontend/`、`public/graph/`：基于 CitationCS 的 20 万篇论文引用图谱界面（D3）
+- `data/*.py`：OpenAlex / CitationCS / Semantic Scholar 采集与合并脚本；`data/*.md` 为相应的数据模式与审计文档
+- `UX_NOTES.md`、`AI_Research_Graph_Roadmap_v1.0.docx`：早期产品设计与路线图
 
-合并器会按 OpenAlex ID 去重，并从 AI/CS 种子沿 `source -> target` 引用边计算遍历层级；每条边保留 `provenance_sources` 和 `source_system`，不会把 CitationCS 边伪装成 OpenAlex 边。
-
-将生成的 JSON 压缩为 `frontend/data.sample.json.gz` 后刷新网站即可；页面会在浏览器端解压。当前 200,000 篇快照覆盖 CitationCS 近十年 AI 优先候选中的约 96.19%，但仍是可复现的有限样本，不代表近十年 AI/CS 论文的完整覆盖；完整 OpenAlex 目录导入仍需要 API key、断点续传、去重和持续覆盖率审计。
-
-## 目录
-
-- `frontend/`：网站界面和交互式 D3 图谱
-- `data/`：OpenAlex/CitationCS 采集脚本、数据模式和真实样本
-- `UX_NOTES.md`：图谱方向语义、筛选、溯源和性能边界
-- `AI_Research_Graph_Roadmap_v1.0.docx`：项目路线图
+数据来源许可：arXiv 元数据（[arXiv](https://arxiv.org)）；CitationCS（Zenodo 16537950，CC BY 4.0）。
