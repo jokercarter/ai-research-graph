@@ -126,6 +126,10 @@ function datasetStats(raw, data) {
           catalogExpectedCount: Number(raw.coverage.catalog_expected_count) || 0,
           catalogSampleCount: Number(raw.coverage.catalog_sample_count) || 0,
           catalogSampleFraction: Number(raw.coverage.catalog_sample_fraction) || 0,
+          sourceWindowCsRecords: Number(raw.coverage.source_window_cs_records) || 0,
+          sourceWindowAiPriorityRecords: Number(raw.coverage.source_window_ai_priority_records) || 0,
+          selectedSampleCount: Number(raw.coverage.selected_sample_count) || 0,
+          selectedSampleFraction: Number(raw.coverage.selected_sample_fraction_of_window_ai_priority) || 0,
           citationcsDatasetNodes: Number(raw.coverage.citationcs_dataset_nodes) || 0,
           citationcsDatasetEdges: Number(raw.coverage.citationcs_dataset_edges) || 0,
           citationcsWindowCsNodes: Number(raw.coverage.citationcs_window_cs_nodes) || 0,
@@ -152,8 +156,11 @@ function updateDatasetStats() {
     const label = coverage.citationcsWindowCsNodes ? "近十年 CS 数据集" : "数据集";
     coverageNotes.push(`CitationCS 子图 ${formatCount(coverage.citationcsSampleCount)} / ${label} ${formatCount(denominator)} 篇`);
   }
+  if (coverage?.sourceWindowAiPriorityRecords) {
+    coverageNotes.push(`近十年 AI 优先样本 ${formatCount(coverage.selectedSampleCount)} / ${formatCount(coverage.sourceWindowAiPriorityRecords)} 篇（${(coverage.selectedSampleFraction * 100).toFixed(2)}%）`);
+  }
   const coverageNote = coverageNotes.length ? `；${coverageNotes.join("；")}` : "";
-  $("datasetNote").textContent = `完整快照 ${formatCount(state.stats.nodes)} 节点 / ${formatCount(state.stats.edges)} 边${timestamp}${coverageNote}；这是可追溯的有限样本，画布是受限子图，最多渲染 ${formatCount(state.renderLimit)} 个节点，可用搜索或 ${state.neighborhoodDepth} 跳邻域继续展开关系。`;
+  $("datasetNote").textContent = `当前快照 ${formatCount(state.stats.nodes)} 节点 / ${formatCount(state.stats.edges)} 边${timestamp}${coverageNote}；这是可追溯的有限样本，画布是受限子图，最多渲染 ${formatCount(state.renderLimit)} 个节点，可用搜索或 ${state.neighborhoodDepth} 跳邻域继续展开关系。`;
 }
 
 function formatCount(value) {

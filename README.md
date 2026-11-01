@@ -22,7 +22,7 @@ node "$env:USERPROFILE\.codex\plugins\cache\openai-curated-remote\sites\1.1.2\sc
 
 ## 更新论文数据
 
-默认快照为 OpenAlex 与 CitationCS 的可追溯联合数据，当前为 **56,832 个论文节点、330,245 条有向引用边**：包含 OpenAlex 递归图、2,200 个年度 CS 目录样本、多主题 AI/CS 切片，以及 CitationCS 的 47,954 节点/285,003 边两层递推子图。网站保留快照中的全部节点，画布初始按引用量显示前 100 个节点，也可切换到 200、500 或 1,000 个节点；搜索、主题筛选或邻域展开后的当前簇若超过 20 个节点，会按引用边方向取拓扑排序最前层，并叠加数据源提供的获奖论文信号，用黄色大节点标记前沿论文；搜索还会展开相关引用节点并显示少量标题，年份筛选和 1–3 跳邻域用于继续探索关系。
+默认快照为 **200,000 个近十年 AI 优先论文节点、435,731 条有向引用边**。节点来自 CitationCS 的 Computer Science 记录，优先保留 Artificial Intelligence、machine learning、deep learning、computer vision、natural language、robotics 和 neural 等主题，并按年份比例抽样；边只复制快照中的真实 `ref_lst` 引用关系。网站保留快照中的全部节点，画布初始按引用量显示前 100 个节点，也可切换到 200、500 或 1,000 个节点；搜索、主题筛选或邻域展开后的当前簇若超过 20 个节点，会按引用边方向取拓扑排序最前层，并叠加数据源提供的获奖论文信号，用黄色大节点标记前沿论文；搜索还会展开相关引用节点并显示少量标题，年份筛选和 1–3 跳邻域用于继续探索关系。
 
 ```powershell
 python data/collect_openalex_graph.py `
@@ -62,6 +62,16 @@ python data/import_citationcs.py `
   --depth 2 --max-seeds 10000 --max-nodes 50000
 ```
 
+当前网站使用的 200,000 篇快照可由本地 CitationCS 压缩档案重建。它只保留目标窗口内的 AI 优先 Computer Science 记录，并把旧快照中重叠论文的 OpenAlex 摘要、 DOI、奖项和引用计数作为补充元数据：
+
+```powershell
+python data/build_recent_ai_cs_catalogue.py `
+  --archive D:\research\citation_cache\citation_cs.parallel.zip `
+  --existing data/ai_cs_graph_citationcs_60000.json.gz `
+  --target-nodes 200000 `
+  --out data/ai_cs_graph_200000.json.gz
+```
+
 如需合并多个主题切片，也可以使用：
 
 ```powershell
@@ -72,7 +82,7 @@ python data/merge_openalex_graphs.py `
 
 合并器会按 OpenAlex ID 去重，并从 AI/CS 种子沿 `source -> target` 引用边计算遍历层级；每条边保留 `provenance_sources` 和 `source_system`，不会把 CitationCS 边伪装成 OpenAlex 边。
 
-将生成的 JSON 压缩为 `frontend/data.sample.json.gz` 后刷新网站即可；页面会在浏览器端解压。当前联合快照 `data/ai_cs_graph_citationcs_60000.json.gz` 仍明确显示 OpenAlex CS 目录的 5,435,295 篇期望分母和 2,200 篇目录样本（0.0405%），并显示 CitationCS 的近十年 CS 分母与当前子图规模。它是可复现的有限样本，不代表近十年 AI/CS 论文的完整覆盖；完整 OpenAlex 目录导入仍需要 API key、断点续传、去重和持续覆盖率审计。
+将生成的 JSON 压缩为 `frontend/data.sample.json.gz` 后刷新网站即可；页面会在浏览器端解压。当前 200,000 篇快照覆盖 CitationCS 近十年 AI 优先候选中的约 96.19%，但仍是可复现的有限样本，不代表近十年 AI/CS 论文的完整覆盖；完整 OpenAlex 目录导入仍需要 API key、断点续传、去重和持续覆盖率审计。
 
 ## 目录
 

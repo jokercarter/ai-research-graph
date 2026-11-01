@@ -2,7 +2,7 @@
 
 ## Website snapshot
 
-The current website uses `data/ai_cs_graph_citationcs_60000.json.gz`, a union of the OpenAlex recursive source, `data/cs_field_catalog_2200.json`, the multi-topic AI/CS slice, and `data/citationcs_ai_cs_slice_50000.json.gz`. The union contains **56,832 nodes** and **330,245 directed citation edges** after endpoint and pair de-duplication. It adds **1,582** catalog-only nodes, **373** topic-slice-only nodes, and **46,961** CitationCS-only nodes. The catalog denominator is **5,435,295** works for the exact Computer Science field/type/date filter; the 2,200-work catalog sample is **0.0405%** of that denominator and is marked non-exhaustive. CitationCS contributes a bounded 47,954-node traversal from a 3,720,575-paper archive.
+The current website uses `data/ai_cs_graph_200000.json.gz`, a deterministic AI-priority catalogue from the CitationCS archive. It contains **200,000 nodes** and **435,731 directed citation edges** after endpoint and pair de-duplication. Every node is in the requested `2016-11-01` through `2026-10-31` window and has `primary_topic.field = Computer Science`; the source archive contains 207,922 AI-priority candidates, so the snapshot covers 96.19% of that bounded pool. The snapshot is non-exhaustive relative to the full 3,720,575-paper archive and preserves `coverage` metadata for that boundary.
 
 The union was validated with no missing edge endpoints, duplicate endpoint pairs, or self-loops. Every edge remains a copied provider relation: OpenAlex `referenced_works` or CitationCS `ref_lst`. `coverage.catalog_expected_count`, `coverage.catalog_sample_count`, `coverage.catalog_sample_fraction`, and CitationCS dataset/sample counts are carried in the JSON so the UI can show the coverage boundary.
 

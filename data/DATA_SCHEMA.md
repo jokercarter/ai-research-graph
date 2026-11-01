@@ -2,7 +2,7 @@
 
 This directory contains the reproducible data path for the AI Research Graph website.
 
-The current website snapshot is `ai_cs_graph_citationcs_60000.json.gz`: a 56,832-work union with 330,245 directed citation edges. It combines the 7,916-work OpenAlex two-layer recursive graph, a 2,200-work year-balanced Computer Science catalogue sample, the multi-topic AI/CS slice, and a 47,954-work two-layer CitationCS traversal. `recursive_graph_10000.json` remains the recursive source, `cs_field_catalog_2200.json` records the auditable field-filtered sample, `citationcs_ai_cs_slice_50000.json.gz` records the offline traversal, and `sample_graph.json` remains the smoke-test fixture.
+The current website snapshot is `ai_cs_graph_200000.json.gz`: exactly 200,000 recent AI-priority Computer Science works with 435,731 directed citation edges. It is built from the local CitationCS archive, keeps only the requested window (`2016-11-01` through `2026-10-31`), and enriches overlapping records with fields from the previous OpenAlex/CitationCS union. The older `ai_cs_graph_citationcs_60000.json.gz` remains a reproducibility source; `recursive_graph_10000.json`, `cs_field_catalog_2200.json`, and `citationcs_ai_cs_slice_50000.json.gz` remain smaller ingestion fixtures.
 
 ## What is authoritative
 

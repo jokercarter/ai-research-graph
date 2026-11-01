@@ -2,11 +2,11 @@
 
 ## Scope
 
-This audit compares the existing keyword/recursive collectors with a broader, field-filtered catalogue mode and a local CitationCS traversal. It uses the exact roadmap window (`2016-11-01` through `2026-10-31`). The website now uses the reproducible union `ai_cs_graph_citationcs_60000.json.gz`, which combines OpenAlex recursive/catalogue/topic slices with a CitationCS two-layer subgraph.
+This audit compares the existing keyword/recursive collectors with a broader, field-filtered catalogue mode and a local CitationCS catalogue. It uses the exact roadmap window (`2016-11-01` through `2026-10-31`). The website now uses the reproducible `ai_cs_graph_200000.json.gz` snapshot, which selects 200,000 AI-priority Computer Science records from the local CitationCS archive.
 
 ## Current website snapshot
 
-The current union contains **56,832 nodes** and **330,245 directed citation edges**. It includes the 7,916-node OpenAlex recursive source, 2,200 field-filtered catalogue nodes, 1,063 multi-topic slice nodes, and a 47,954-node CitationCS traversal. The CitationCS traversal adds 46,961 nodes to the union and contributes 285,003 unique edges before cross-source de-duplication. The website carries `source_system` and `provenance_sources` on edges so the two providers remain distinguishable.
+The current snapshot contains **200,000 nodes** and **435,731 directed citation edges**. All nodes are inside the requested date window and have `primary_topic.field = Computer Science`; the selection rule prioritises Artificial Intelligence, machine learning, deep learning, computer vision, natural language, robotics, and neural topics. The source archive contains 207,922 AI-priority candidates in the window, so the release covers 96.19% of that bounded candidate pool. The older union remains available for provenance enrichment and comparison.
 
 CitationCS is a static 2025-07-28 Zenodo archive with 3,720,575 papers and 22,908,275 internal citations. Its records use OpenAlex `W...` identifiers and `ref_lst`; the importer filters Computer Science primary topics, chooses recent/AI-prioritized seeds, and follows references to depth 2. The traversal is a bounded slice, not a claim that the archive or the ten-year AI/CS corpus is fully rendered.
 
