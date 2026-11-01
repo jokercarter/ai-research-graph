@@ -64,7 +64,7 @@ button { color: inherit; }
 .dataset-stats strong { display: block; color: var(--text); font-size: 14px; font-weight: 600; }
 .dataset-stats span { display: block; margin-top: 3px; color: var(--faint); font-size: 8px; }
 .dataset-note { margin: 9px 0 0; color: var(--faint); font-size: 9px; line-height: 1.45; }
-.ai-search-card { margin: 14px 0 5px; padding: 12px 10px 10px; border: 1px solid rgba(189, 150, 255, .2); border-radius: 8px; background: linear-gradient(145deg, rgba(189, 150, 255, .1), rgba(17, 27, 44, .62)); }
+.ai-search-card { width: min(680px, calc(100% - 20px)); margin: 0 auto 14px; padding: 12px 14px 10px; border: 1px solid rgba(189, 150, 255, .2); border-radius: 8px; background: linear-gradient(145deg, rgba(189, 150, 255, .1), rgba(17, 27, 44, .62)); }
 .ai-search-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
 .ai-search-heading h3 { margin: 0; font-size: 14px; letter-spacing: -.02em; }
 .ai-badge { padding: 3px 6px; border: 1px solid rgba(189, 150, 255, .36); border-radius: 999px; color: var(--violet); background: rgba(189, 150, 255, .11); font-size: 9px; font-weight: 700; letter-spacing: .08em; }
