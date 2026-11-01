@@ -5,6 +5,9 @@
 
 1. Harvests arXiv records added or updated since the last run (OAI-PMH, no key needed).
 2. Rebuilds the site data for the most recent 24 months into public/research/data.
+3. Research directions: embeds only the new papers' abstracts (GPU if available,
+   see embed_gpu.py), assigns every paper to its directions and recomputes trends.
+   The directions themselves stay fixed; run `directions.py build --refit` to redo them.
 Takes roughly 10-20 minutes depending on the network.
 """
 import subprocess
@@ -27,6 +30,9 @@ def main():
     start = start.replace(day=1)                             # 24 full months
     run("harvest_arxiv.py", "--until", today.isoformat())
     run("build_simple.py", "all", "--start", start.isoformat(), "--end", end.isoformat())
+    run("directions.py", "export")
+    run("embed_gpu.py")
+    run("directions.py", "build")
     print(f"done: site data for {start} .. {end} is in public/research/data")
 
 

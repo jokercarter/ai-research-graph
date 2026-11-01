@@ -100,16 +100,32 @@ def cli_prompt(system, messages):
 
 CLAUDE_MODELS = {"sonnet", "opus", "haiku", "default"}
 LAST_MODEL = {"name": ""}
+LAST_USAGE = {"input": 0, "output": 0}
+# Claude Code normally sends its own long system prompt and tool definitions with every
+# request (tens of thousands of tokens). For Q&A we replace the system prompt and turn
+# all tools off, so a question costs only the papers and the answer. Older CLI versions
+# without these options fall back to the plain call.
+LEAN = {"ok": True}
 
 
 def run_cli(provider, system, messages, timeout=240, model=None) -> str:
     """Ask the locally logged-in Claude Code (subscription) once; returns the reply text."""
-    prompt = cli_prompt(system, messages)
     with tempfile.TemporaryDirectory() as tmp:  # empty working dir: the CLI sees no project files
-        cmd = [CLAUDE_CLI, "-p", "--output-format", "json"]
+        base = [CLAUDE_CLI, "-p", "--output-format", "json"]
         if model in CLAUDE_MODELS and model != "default":
-            cmd += ["--model", model]
-        r = subprocess.run(cmd, input=prompt, capture_output=True, text=True, encoding="utf-8", errors="replace", cwd=tmp, timeout=timeout)
+            base += ["--model", model]
+        r = None
+        if LEAN["ok"]:
+            convo = "\n\n".join(("User: " if m["role"] == "user" else "Assistant: ") + m["content"] for m in messages)
+            sys_file = Path(tmp) / "system.txt"; sys_file.write_text(system, encoding="utf-8")
+            cmd = base + ["--system-prompt-file", str(sys_file), "--tools", "", "--strict-mcp-config"]
+            r = subprocess.run(cmd, input=convo, capture_output=True, text=True, encoding="utf-8", errors="replace", cwd=tmp, timeout=timeout)
+            if r.returncode != 0 or '"result"' not in (r.stdout or ""):
+                r = None  # this CLI version does not take the lean options: use the plain call
+        if r is None:
+            r = subprocess.run(base, input=cli_prompt(system, messages), capture_output=True, text=True, encoding="utf-8", errors="replace", cwd=tmp, timeout=timeout)
+            if r.returncode == 0 and LEAN["ok"]:
+                LEAN["ok"] = False
     try:
         data = json.loads(r.stdout)
     except json.JSONDecodeError:
@@ -117,6 +133,9 @@ def run_cli(provider, system, messages, timeout=240, model=None) -> str:
     text = (data.get("result") or "").strip() if isinstance(data, dict) else ""
     if r.returncode != 0 or not text or data.get("is_error"):
         raise RuntimeError("Claude Code 调用失败（确认已用 Claude 账号登录；选 Opus 时也可能是订阅不支持或额度用完）：" + (text or r.stderr or r.stdout)[-300:])
+    u = data.get("usage") or {}
+    LAST_USAGE["input"] = int(u.get("input_tokens", 0)) + int(u.get("cache_read_input_tokens", 0)) + int(u.get("cache_creation_input_tokens", 0))
+    LAST_USAGE["output"] = int(u.get("output_tokens", 0))
     usage = data.get("modelUsage") or {}
     LAST_MODEL["name"] = max(usage, key=lambda m: (usage[m] or {}).get("outputTokens", 0)) if usage else (model or "Claude Code")
     return text
@@ -161,9 +180,13 @@ PLAN_SYSTEM = re.search(r"const PLAN_SYSTEM = `(.*?)`;", (ROOT / "app/api/ask/ro
 ANSWER_TEMPLATE = re.search(r"return `(You are a research assistant.*?)`;", (ROOT / "app/api/ask/route.ts").read_text(encoding="utf-8"), re.S).group(1)
 
 
-def answer_system(sources, lang):
-    lst = "\n\n".join(f"[{i + 1}] {s.get('title', '')} ({s.get('date', '?')}; {s.get('authors', '')})\n{(s.get('abstract') or '(no abstract)')[:1800]}" for i, s in enumerate(sources[:16]))
-    return ANSWER_TEMPLATE.replace('${lang === "en" ? "English" : "Simplified Chinese"}', "English" if lang == "en" else "Simplified Chinese").replace("${list}", lst)
+def answer_system(sources, lang, overview="(none)"):
+    key = [s for s in sources if s.get("abstract")]
+    more = [s for s in sources if not s.get("abstract")]
+    lst = "\n\n".join(f"[{s['n']}] {s.get('title', '')} ({s.get('date', '?')})\n{str(s['abstract'])[:600]}" for s in key)
+    mr = "\n".join(f"[{s['n']}] {s.get('title', '')} ({s.get('date', '?')})" for s in more) or "(none)"
+    return (ANSWER_TEMPLATE.replace('${lang === "en" ? "English" : "Simplified Chinese"}', "English" if lang == "en" else "Simplified Chinese")
+            .replace("${list}", lst).replace("${more}", mr).replace("${overview}", str(overview or "(none)")[:900]))
 
 
 def mock_answer(question, sources):
@@ -173,6 +196,67 @@ def mock_answer(question, sources):
     for i in range(0, len(text), 12):
         time.sleep(0.02)
         yield text[i:i + 12]
+
+
+class QueryEmbedder:
+    """Keeps data/pipeline/query_embed.py running so search queries can be turned into
+    meaning vectors (semantic search). Optional: without it the site falls back to
+    finding similar papers from the keyword results."""
+
+    def __init__(self):
+        import threading
+        self.lock = threading.Lock(); self.proc = None; self.failed = None; self.cache = {}
+
+    def python(self):
+        for c in (ROOT / "data/work/venv-gpu/Scripts/python.exe", ROOT / "data/work/venv-gpu/bin/python"):
+            if c.exists():
+                return str(c)
+        return sys.executable
+
+    def start(self):
+        if self.proc and self.proc.poll() is None:
+            return True
+        if self.failed:
+            return False
+        if not (SITE / "data/v/pca.bin.gz").exists():
+            self.failed = "没有向量索引"; return False
+        try:
+            self.proc = subprocess.Popen([self.python(), str(ROOT / "data/pipeline/query_embed.py")], stdin=subprocess.PIPE,
+                                         stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True, encoding="utf-8", bufsize=1)
+            first = json.loads(self.proc.stdout.readline() or "{}")
+            if not first.get("ready"):
+                raise RuntimeError("embedder did not start")
+            return True
+        except Exception as e:  # noqa: BLE001
+            self.failed = str(e)[:200]; self.proc = None
+            return False
+
+    def warm(self):
+        with self.lock:
+            self.start()
+
+    def embed(self, q):
+        q = q.strip()[:500]
+        if q in self.cache:
+            return self.cache[q]
+        with self.lock:
+            if not self.start():
+                return None
+            try:
+                self.proc.stdin.write(json.dumps({"q": q}, ensure_ascii=False) + "\n"); self.proc.stdin.flush()
+                out = json.loads(self.proc.stdout.readline() or "{}")
+            except Exception:  # noqa: BLE001
+                self.proc = None
+                return None
+        v = out.get("v")
+        if v:
+            if len(self.cache) > 500:
+                self.cache.clear()
+            self.cache[q] = v
+        return v
+
+
+EMBEDDER = QueryEmbedder()
 
 
 class Handler(http.server.SimpleHTTPRequestHandler):
@@ -244,6 +328,13 @@ class Handler(http.server.SimpleHTTPRequestHandler):
 
     def do_POST(self):
         length = int(self.headers.get("content-length") or 0)
+        if self.path.startswith("/api/embed"):
+            try:
+                q = str(json.loads(self.rfile.read(length) or b"{}").get("q") or "")
+            except json.JSONDecodeError:
+                q = ""
+            v = EMBEDDER.embed(q) if q.strip() else None
+            return self.send_json({"v": v} if v else {"error": EMBEDDER.failed or "embedder unavailable"}, 200 if v else 503)
         if self.path.startswith("/api/claude/login"):
             self.rfile.read(length)
             if not self.local_only():
@@ -272,8 +363,8 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                 req_model = str(body.get("model") or "")
                 cli_model = req_model if req_model in CLAUDE_MODELS else None
                 REQ_MODEL["api"] = req_model if re.fullmatch(r"claude-[a-z0-9.\-]{3,40}", req_model) else None
-                history = [m for m in body.get("history", [])[-6:] if isinstance(m, dict) and m.get("content")]
-                history = [{"role": "assistant" if m.get("role") == "assistant" else "user", "content": str(m["content"])[:2500]} for m in history]
+                history = [m for m in body.get("history", [])[-4:] if isinstance(m, dict) and m.get("content")]
+                history = [{"role": "assistant" if m.get("role") == "assistant" else "user", "content": str(m["content"])[:800]} for m in history]
                 if body.get("phase") == "plan":
                     if provider in CLI_IDS and not re.search(r"[\u3400-\u9fff]", q):
                         return self.send_json({"queries": [q], "language": "en", "provider": provider})
@@ -284,15 +375,19 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                     j = json.loads(text[text.index("{"): text.rindex("}") + 1])
                     qs = [re.sub(r"[^\w\s\-]", " ", str(x)).strip() for x in j.get("queries", [])][:4]
                     return self.send_json({"queries": [x for x in qs if x], "language": "en" if j.get("language") == "en" else "zh", "provider": provider})
-                sources = [s for s in body.get("sources", []) if isinstance(s, dict) and s.get("title")][:16]
+                sources = [s for s in body.get("sources", []) if isinstance(s, dict) and s.get("title")][:24]
+                for n, src in enumerate(sources):
+                    src["n"] = n + 1
                 if not sources:
                     return self.send_json({"error": "没有检索到可供回答的论文"}, 400)
-                gen = mock_answer(q, sources) if provider == "mock" else stream_text(provider, answer_system(sources, body.get("language", "zh")), history + [{"role": "user", "content": q}], model=cli_model)
+                gen = mock_answer(q, sources) if provider == "mock" else stream_text(provider, answer_system(sources, body.get("language", "zh"), body.get("overview")), history + [{"role": "user", "content": q}], model=cli_model)
                 first = next(gen, "")  # surface upstream errors before headers are sent
                 p = next(x for x in plist if x["id"] == provider)
                 self.send_response(200)
                 self.send_header("content-type", "text/plain; charset=utf-8"); used_model = LAST_MODEL["name"] if provider in CLI_IDS else (REQ_MODEL["api"] or p["model"])
-                self.send_header("x-provider", provider); self.send_header("x-model", re.sub(r"[^\w.\-]", "", used_model) or p["model"])
+                self.send_header("x-provider", provider)
+                if provider in CLI_IDS and LAST_USAGE.get("input"):
+                    self.send_header("x-usage", f"{LAST_USAGE['input']}/{LAST_USAGE['output']}"); self.send_header("x-model", re.sub(r"[^\w.\-]", "", used_model) or p["model"])
                 self.send_header("transfer-encoding", "chunked"); self.end_headers()
                 for chunk in [first, *gen]:
                     data = chunk.encode()
@@ -332,4 +427,6 @@ if __name__ == "__main__":
     print(f"\nAI Research Graph 已启动: {url}\n可用模型: {names}\n关闭这个窗口即可停止网站。\n", flush=True)
     if open_path is not None:
         webbrowser.open(url + "index.html" + open_path)
+    import threading
+    threading.Thread(target=EMBEDDER.warm, daemon=True).start()  # load the query embedder in the background
     server.serve_forever()

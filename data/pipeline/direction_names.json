@@ -1,0 +1,756 @@
+{
+ "fingerprint": "5f3b4018235a",
+ "note": "Names written by reading each direction's 15 most central papers. Regenerate after `directions.py build --refit`.",
+ "directions": {
+  "0": {
+   "zh": "时间序列预测与基础模型",
+   "en": "Time-series forecasting & foundation models",
+   "desc": "多变量与长期时间序列预测、时间序列基础模型及其评测。"
+  },
+  "1": {
+   "zh": "神经组合优化",
+   "en": "Neural combinatorial optimization",
+   "desc": "用学习方法求解车辆路径、作业车间调度、装箱等组合优化问题。"
+  },
+  "2": {
+   "zh": "大模型强化学习推理（RLVR）",
+   "en": "RL with verifiable rewards for LLM reasoning",
+   "desc": "用可验证奖励的强化学习训练大模型推理，研究 GRPO/DAPO 等算法的探索、裁剪与训练动态。"
+  },
+  "3": {
+   "zh": "图形设计与视觉创作",
+   "en": "Graphic design & visual creation",
+   "desc": "生成式 AI 用于图形设计、SVG/矢量图、图表与界面设计。"
+  },
+  "4": {
+   "zh": "医学图像分割",
+   "en": "Medical image segmentation",
+   "desc": "病灶、息肉、肿瘤等医学图像分割，通用分割模型与半监督方法。"
+  },
+  "5": {
+   "zh": "视频理解与视频大模型",
+   "en": "Video understanding with Video-LLMs",
+   "desc": "长视频理解、视频问答与推理、时序定位及相关基准。"
+  },
+  "6": {
+   "zh": "PDE 求解与神经算子",
+   "en": "Neural PDE solvers & operators",
+   "desc": "物理信息神经网络（PINN）、神经算子等求解偏微分方程的方法。"
+  },
+  "7": {
+   "zh": "智能体技能与工具使用",
+   "en": "Agent skills & tool use",
+   "desc": "大模型智能体的工具调用、技能库、脚手架（harness）与长程任务能力。"
+  },
+  "8": {
+   "zh": "人机交互：用户体验与数字福祉",
+   "en": "HCI: wellbeing & user experience",
+   "desc": "社交媒体设计、老年人与儿童用户、心理健康应用、暗模式等人机交互研究。"
+  },
+  "9": {
+   "zh": "工业故障诊断与缺陷检测",
+   "en": "Industrial fault diagnosis & inspection",
+   "desc": "设备故障诊断、剩余寿命预测、结构损伤与焊接/钢材缺陷检测。"
+  },
+  "10": {
+   "zh": "文档 OCR 与版面分析",
+   "en": "Document OCR & layout analysis",
+   "desc": "文字识别、手写识别、文档版面分析与文档理解基准。"
+  },
+  "11": {
+   "zh": "脉冲神经网络与类脑计算",
+   "en": "Spiking neural networks & neuromorphic computing",
+   "desc": "SNN 训练方法、类脑与神经形态计算、模拟计算硬件。"
+  },
+  "12": {
+   "zh": "手语识别与翻译",
+   "en": "Sign language recognition & translation",
+   "desc": "手语识别、翻译与生成，以及大规模手语数据集。"
+  },
+  "13": {
+   "zh": "人体动作识别与可穿戴感知",
+   "en": "Human activity recognition",
+   "desc": "骨架动作识别、步态与跌倒检测、基于可穿戴传感器的活动识别。"
+  },
+  "14": {
+   "zh": "对抗攻击、深度伪造与水印",
+   "en": "Adversarial robustness, deepfakes & watermarking",
+   "desc": "视觉对抗攻击与防御、深度伪造与 AI 生成图像检测、数字水印与隐写。"
+  },
+  "15": {
+   "zh": "医学影像重建与生成",
+   "en": "Medical image reconstruction & synthesis",
+   "desc": "MRI/CT 重建、低剂量成像、扩散 MRI 与医学图像跨模态生成。"
+  },
+  "16": {
+   "zh": "移动平台与遥感场景感知",
+   "en": "Field robotics & remote-sensing perception",
+   "desc": "事件相机视觉里程计、雷达点云、变化检测与野外/遥感场景理解。"
+  },
+  "17": {
+   "zh": "黑盒优化与科学计算中的学习",
+   "en": "Learning for black-box optimization & scientific computing",
+   "desc": "黑盒与贝叶斯优化、深度展开、物理信息 KAN 等。"
+  },
+  "18": {
+   "zh": "情感计算",
+   "en": "Affective computing",
+   "desc": "语音与多模态情感识别、表情识别，以及多模态大模型的情感理解。"
+  },
+  "19": {
+   "zh": "大模型偏见、价值观与文化对齐",
+   "en": "LLM bias, values & cultural alignment",
+   "desc": "大模型的社会偏见、道德判断、意识形态与多元价值对齐评测。"
+  },
+  "20": {
+   "zh": "大模型高效训练与边缘部署",
+   "en": "Efficient LLM training & edge deployment",
+   "desc": "低精度训练、KV 缓存管理、中期训练、指令数据选择与边缘设备训练。"
+  },
+  "21": {
+   "zh": "弱监督、小样本与表征学习",
+   "en": "Weak supervision, few-shot & representation learning",
+   "desc": "弱监督与 PU 学习、小样本与元学习、领域泛化、模型融合。"
+  },
+  "22": {
+   "zh": "异常检测",
+   "en": "Anomaly detection",
+   "desc": "工业、视频与时间序列异常检测，零样本异常检测与 MVTec 等基准。"
+  },
+  "23": {
+   "zh": "交通预测与时空建模",
+   "en": "Traffic & spatio-temporal forecasting",
+   "desc": "交通流量预测、人群移动建模与时空图网络。"
+  },
+  "24": {
+   "zh": "混合专家模型（MoE）",
+   "en": "Mixture of Experts",
+   "desc": "MoE 架构与路由、专家复用、大规模 MoE 训练与推理。"
+  },
+  "25": {
+   "zh": "多智能体交互与博弈",
+   "en": "Multi-agent LLM interaction & games",
+   "desc": "多智能体辩论、社交与博弈场景中的大模型智能体、心智理论。"
+  },
+  "26": {
+   "zh": "AI 辅助科研与同行评审",
+   "en": "AI for scientific research & peer review",
+   "desc": "大模型自动科研、科学创意生成、文献检索与同行评审。"
+  },
+  "27": {
+   "zh": "大模型智能体系统与评测",
+   "en": "LLM agent systems & evaluation",
+   "desc": "智能体架构、多智能体工作流、网页浏览智能体及其基准。"
+  },
+  "28": {
+   "zh": "AI 智能体安全",
+   "en": "Security of AI agents",
+   "desc": "提示注入、智能体攻击面、渗透测试与智能体安全防御。"
+  },
+  "29": {
+   "zh": "流匹配生成模型",
+   "en": "Flow matching & continuous flows",
+   "desc": "流匹配、整流流、一步生成与 GFlowNet 等连续流生成模型的理论与方法。"
+  },
+  "30": {
+   "zh": "视觉-语言-动作模型（VLA）",
+   "en": "Vision-language-action models",
+   "desc": "用于机器人操作的 VLA 模型、潜在动作、VLA 推理加速与强化微调。"
+  },
+  "31": {
+   "zh": "Muon 等新型优化器",
+   "en": "Muon & spectral optimizers",
+   "desc": "Muon 等基于谱正交化的优化器的理论与实践（另含少量粒子物理 AI）。"
+  },
+  "32": {
+   "zh": "空间智能与具身导航",
+   "en": "Spatial intelligence & embodied navigation",
+   "desc": "视觉语言模型的空间推理、视觉语言导航（VLN）、具身问答与 GUI 定位。"
+  },
+  "33": {
+   "zh": "强化学习理论",
+   "en": "Reinforcement learning theory",
+   "desc": "MDP、Q 学习、策略梯度与离线强化学习的收敛性和样本复杂度。"
+  },
+  "34": {
+   "zh": "音乐生成",
+   "en": "Music generation",
+   "desc": "符号音乐与音频音乐生成、歌声合成与音乐生成评测。"
+  },
+  "35": {
+   "zh": "视觉 Transformer 架构",
+   "en": "Vision Transformer architectures",
+   "desc": "ViT 结构设计、高效推理与自监督视觉表征。"
+  },
+  "36": {
+   "zh": "心电与生理信号分析",
+   "en": "ECG & physiological signals",
+   "desc": "心电图、PPG 等生理信号分析与可穿戴健康基础模型。"
+  },
+  "37": {
+   "zh": "代码生成与程序修复",
+   "en": "Code generation & program repair",
+   "desc": "大模型代码生成、仓库级编码、自动程序修复与 SWE-bench 等评测。"
+  },
+  "38": {
+   "zh": "触觉感知与接触操作",
+   "en": "Tactile sensing for manipulation",
+   "desc": "视触觉传感器、机器人皮肤与接触丰富的操作。"
+  },
+  "39": {
+   "zh": "智能体 AI 的行业应用与治理",
+   "en": "Agentic AI in practice & governance",
+   "desc": "生成式与智能体 AI 在行业、可持续发展、区块链等场景的应用框架与治理。"
+  },
+  "40": {
+   "zh": "世界-动作模型",
+   "en": "World action models",
+   "desc": "联合预测未来画面与动作的世界模型，用于机器人学习与控制。"
+  },
+  "41": {
+   "zh": "多模态大模型幻觉与视觉推理",
+   "en": "MLLM hallucination & visual reasoning",
+   "desc": "大视觉语言模型的物体幻觉检测与缓解、视觉-语言对齐与推理。"
+  },
+  "42": {
+   "zh": "可解释 AI 与论证推理",
+   "en": "Explainable AI & argumentation",
+   "desc": "可解释性理论、反事实解释、因果与贝叶斯解释、抽象论证框架。"
+  },
+  "43": {
+   "zh": "知识图谱与 GraphRAG",
+   "en": "Knowledge graphs & GraphRAG",
+   "desc": "知识图谱构建与问答、关系抽取、图上的大模型推理与 GraphRAG。"
+  },
+  "44": {
+   "zh": "算法博弈论与机制设计",
+   "en": "Algorithmic game theory & mechanism design",
+   "desc": "均衡学习、拍卖与机制设计、社会困境与多智能体学习。"
+  },
+  "45": {
+   "zh": "扩散模型理论",
+   "en": "Theory of diffusion models",
+   "desc": "扩散模型的数学原理、收敛性分析、引导与后验采样。"
+  },
+  "46": {
+   "zh": "视觉语言模型应用与跨模态表征",
+   "en": "VLM applications & cross-modal representations",
+   "desc": "图像描述、跨模态表征、基于 CLIP 的增量学习与视觉数据选择。"
+  },
+  "47": {
+   "zh": "智能体记忆",
+   "en": "Agent memory",
+   "desc": "大模型智能体的长期记忆架构、记忆管理与 LoCoMo、LongMemEval 等评测。"
+  },
+  "48": {
+   "zh": "软件漏洞检测与代码安全",
+   "en": "Vulnerability detection & code security",
+   "desc": "大模型检测漏洞与生成利用、智能合约与恶意软件分析、生成代码的安全性。"
+  },
+  "49": {
+   "zh": "几何与拓扑深度学习",
+   "en": "Geometric & topological deep learning",
+   "desc": "黎曼流形、层与单纯复形、几何视角下的机器学习理论。"
+  },
+  "50": {
+   "zh": "计算病理学",
+   "en": "Computational pathology",
+   "desc": "全切片病理图像分析、病理基础模型与多示例学习。"
+  },
+  "51": {
+   "zh": "大模型通用推理与应用",
+   "en": "General LLM reasoning & applications",
+   "desc": "逻辑与常识推理、任务型对话合成、推理能耗与基准局限等大模型通用研究。"
+  },
+  "52": {
+   "zh": "音频与语音信号处理",
+   "en": "Audio & speech processing",
+   "desc": "语音增强与分离、声音事件识别、音频深度伪造检测与音频大模型评测。"
+  },
+  "53": {
+   "zh": "区块链与去中心化应用",
+   "en": "Blockchain & decentralized applications",
+   "desc": "区块链安全、共识协议、智能合约、零知识 Rollup 与去中心化身份。"
+  },
+  "54": {
+   "zh": "大模型评测与 LLM 评委",
+   "en": "LLM evaluation & LLM-as-a-judge",
+   "desc": "基准设计的局限、LLM 评委的可靠性，以及作文评分、法律咨询等领域评测。"
+  },
+  "55": {
+   "zh": "大模型推荐系统",
+   "en": "LLM-based recommendation",
+   "desc": "用大模型增强推荐、推荐智能体与对话式推荐。"
+  },
+  "56": {
+   "zh": "低资源语言 NLP",
+   "en": "Low-resource language NLP",
+   "desc": "南亚、阿拉伯、非洲等低资源语言的大模型与评测基准。"
+  },
+  "57": {
+   "zh": "金融 AI 与量化交易",
+   "en": "Financial AI & trading",
+   "desc": "大模型用于股价预测、交易策略、投资组合与金融风险。"
+  },
+  "58": {
+   "zh": "机器人学习：交互与泛化",
+   "en": "Robot learning: interaction & generalization",
+   "desc": "人形机器人落脚、双臂操作、可通行性估计等机器人学习研究。"
+  },
+  "59": {
+   "zh": "语言模型与人类语言认知",
+   "en": "Language models & human linguistic cognition",
+   "desc": "用语言模型研究语言学与认知、语言网络分析与 BabyLM。"
+  },
+  "60": {
+   "zh": "三维视觉：重建、配准与定位",
+   "en": "3D vision: reconstruction, registration & localization",
+   "desc": "多视图三维重建、点云配准与补全、立体匹配、视觉定位（如 VGGT）。"
+  },
+  "61": {
+   "zh": "医学影像诊断与可解释性",
+   "en": "Medical image diagnosis & explainability",
+   "desc": "肿瘤、皮肤病等的医学影像检测、分类与可解释诊断。"
+  },
+  "62": {
+   "zh": "后量子密码与同态加密",
+   "en": "Post-quantum cryptography & FHE",
+   "desc": "后量子密码算法的实现与迁移、全同态加密。"
+  },
+  "63": {
+   "zh": "软体与连续体机器人",
+   "en": "Soft & continuum robots",
+   "desc": "气动/肌腱驱动的软体机器人与连续体机器人的设计、建模与控制。"
+  },
+  "64": {
+   "zh": "分子与蛋白质设计",
+   "en": "Molecule & protein design",
+   "desc": "蛋白质语言模型、分子生成、蛋白-配体亲和力预测与抗体设计。"
+  },
+  "65": {
+   "zh": "具身智能与人机协作",
+   "en": "Embodied AI & human-robot collaboration",
+   "desc": "大模型驱动的机器人、人机协作与交互、具身智能体基准。"
+  },
+  "66": {
+   "zh": "因果发现与因果推断",
+   "en": "Causal discovery & inference",
+   "desc": "因果图学习、结构因果模型、潜在混杂与效应估计。"
+  },
+  "67": {
+   "zh": "文生图与图像编辑",
+   "en": "Text-to-image generation & editing",
+   "desc": "文生图的组合生成与评测、指令式图像编辑与风格化。"
+  },
+  "68": {
+   "zh": "心理健康与大模型",
+   "en": "LLMs for mental health",
+   "desc": "抑郁与自杀风险识别、心理支持中的大模型应用与安全评估。"
+  },
+  "69": {
+   "zh": "天气与气候 AI",
+   "en": "AI for weather & climate",
+   "desc": "降水临近预报、极端天气、气候与大气模式中的深度学习。"
+  },
+  "70": {
+   "zh": "芯片设计自动化（EDA）",
+   "en": "LLMs for chip design (EDA)",
+   "desc": "大模型生成 Verilog/RTL、高层次综合与芯片设计基准。"
+  },
+  "71": {
+   "zh": "虚假信息与 AI 生成文本检测",
+   "en": "Misinformation & AI-generated text detection",
+   "desc": "假新闻与谣言检测、AI 生成文本检测、诈骗信息识别。"
+  },
+  "72": {
+   "zh": "Text-to-SQL",
+   "en": "Text-to-SQL",
+   "desc": "自然语言转 SQL、模式链接、数据合成与强化学习训练。"
+  },
+  "73": {
+   "zh": "电力系统与能源预测",
+   "en": "Power systems & energy forecasting",
+   "desc": "负荷与风电预测、非侵入式负荷监测、微电网与电网运行优化。"
+  },
+  "74": {
+   "zh": "体育分析",
+   "en": "Sports analytics",
+   "desc": "足球、篮球、球拍类运动的视频分析与战术建模。"
+  },
+  "75": {
+   "zh": "多语言大模型与机器翻译",
+   "en": "Multilingual LLMs & machine translation",
+   "desc": "多语言预训练、跨语言迁移与翻译质量评估。"
+  },
+  "76": {
+   "zh": "定理证明与自动形式化",
+   "en": "Theorem proving & autoformalization",
+   "desc": "大模型在 Lean/Coq/Isabelle 中证明定理、自然语言数学的自动形式化。"
+  },
+  "77": {
+   "zh": "优化理论",
+   "en": "Optimization theory",
+   "desc": "随机梯度方法、非凸与非光滑优化的收敛性与复杂度下界。"
+  },
+  "78": {
+   "zh": "运动规划与控制",
+   "en": "Motion planning & control",
+   "desc": "模型预测控制、轨迹规划与跟踪、四旋翼与移动机器人的安全控制。"
+  },
+  "79": {
+   "zh": "天文与天体物理 AI",
+   "en": "AI for astronomy",
+   "desc": "星系、引力波、系外行星与天文时间序列的机器学习。"
+  },
+  "80": {
+   "zh": "无线通信 AI",
+   "en": "AI for wireless communication",
+   "desc": "信道估计、波束成形、通感一体化（ISAC）、无线传播与射频地图基础模型。"
+  },
+  "81": {
+   "zh": "动力系统学习",
+   "en": "Learning dynamical systems",
+   "desc": "Koopman 算子、储备池计算、神经 ODE 与非线性系统辨识。"
+  },
+  "82": {
+   "zh": "科学文献检索与知识组织",
+   "en": "Scientific retrieval & knowledge organization",
+   "desc": "文本属性图、科学问答、本体构建、多跳数据合成与复杂检索任务。"
+  },
+  "83": {
+   "zh": "人体动作与数字人视频生成",
+   "en": "Human motion & avatar video generation",
+   "desc": "音频驱动人像动画、共语手势、人体动作视频生成。"
+  },
+  "84": {
+   "zh": "模型安全：后门、隐私攻击与遗忘",
+   "en": "Backdoors, privacy attacks & machine unlearning",
+   "desc": "后门攻击与防御、模型反演、机器遗忘与模型水印。"
+  },
+  "85": {
+   "zh": "强化学习方法：迁移、稳健与多目标",
+   "en": "RL methods: transfer, robustness & multi-objective",
+   "desc": "扩散策略微调、多智能体迁移、安全离线强化学习、多目标强化学习。"
+  },
+  "86": {
+   "zh": "大模型隐私与文本水印",
+   "en": "LLM privacy & watermarking",
+   "desc": "成员推断、隐私审计、个人信息保护与大模型文本水印。"
+  },
+  "87": {
+   "zh": "三维生成",
+   "en": "3D generation",
+   "desc": "三维资产、场景与人体生成，多视图扩散与网格生成。"
+  },
+  "88": {
+   "zh": "多臂老虎机与在线学习",
+   "en": "Bandits & online learning",
+   "desc": "线性与对抗老虎机、在线凸优化与遗憾分析。"
+  },
+  "89": {
+   "zh": "图神经网络",
+   "en": "Graph neural networks",
+   "desc": "节点分类、异配图、过平滑、图压缩与图基础模型。"
+  },
+  "90": {
+   "zh": "网络与物联网安全",
+   "en": "Network & IoT security",
+   "desc": "零信任架构、物联网与车载网络安全、流量异常检测。"
+  },
+  "91": {
+   "zh": "AI 哲学、意识与创造力",
+   "en": "AI, mind & consciousness",
+   "desc": "AI 意识、创造力、智能体概念与认知科学的理论讨论。"
+  },
+  "92": {
+   "zh": "自动驾驶",
+   "en": "Autonomous driving",
+   "desc": "端到端自动驾驶、驾驶世界模型、驾驶行为建模与闭环评测。"
+  },
+  "93": {
+   "zh": "大模型安全对齐",
+   "en": "LLM safety alignment",
+   "desc": "安全对齐方法、安全评测的稳健性、多模态安全与安全分类器。"
+  },
+  "94": {
+   "zh": "检索增强生成（RAG）",
+   "en": "Retrieval-augmented generation",
+   "desc": "RAG 架构、检索策略、智能体式 RAG 与 GraphRAG 的最佳实践。"
+  },
+  "95": {
+   "zh": "越狱攻击与提示注入",
+   "en": "Jailbreaks & prompt injection",
+   "desc": "大模型越狱攻击与检测、红队测试与内容安全过滤。"
+  },
+  "96": {
+   "zh": "目标检测",
+   "en": "Object detection",
+   "desc": "小目标、旋转目标、红外与伪装目标检测，开放域与域泛化检测。"
+  },
+  "97": {
+   "zh": "生成式推荐",
+   "en": "Generative recommendation",
+   "desc": "生成式与序列推荐、CTR 预估与大规模推荐模型扩展。"
+  },
+  "98": {
+   "zh": "AI 原生 6G 网络",
+   "en": "AI-native 6G networks",
+   "desc": "6G 与 O-RAN 中的大模型与智能体、无人机辅助通信。"
+  },
+  "99": {
+   "zh": "图像分割与 SAM",
+   "en": "Image segmentation & SAM",
+   "desc": "SAM 系列模型、开放词汇与少样本分割、视频目标分割。"
+  },
+  "100": {
+   "zh": "临床预测与医疗机器学习",
+   "en": "Clinical prediction & healthcare ML",
+   "desc": "基于病历的疾病风险预测、重症与慢病预后、医疗模型的稳定性与公平性。"
+  },
+  "101": {
+   "zh": "虚拟与混合现实交互",
+   "en": "VR/AR/XR interaction",
+   "desc": "虚拟现实与混合现实中的交互、晕动症、无障碍与沉浸式体验。"
+  },
+  "102": {
+   "zh": "序列与多行为推荐",
+   "en": "Sequential & multi-behavior recommendation",
+   "desc": "用户兴趣建模、多行为与序列推荐、大模型增强的协同过滤。"
+  },
+  "103": {
+   "zh": "进化计算与多目标优化",
+   "en": "Evolutionary & multi-objective optimization",
+   "desc": "元启发式算法、多目标贝叶斯优化、大模型驱动的进化搜索与优化建模。"
+  },
+  "104": {
+   "zh": "统计学习理论与贝叶斯推断",
+   "en": "Statistical learning theory & Bayesian inference",
+   "desc": "PAC-Bayes、变分贝叶斯、随机矩阵与统计物理视角的学习理论。"
+  },
+  "105": {
+   "zh": "视频生成",
+   "en": "Video generation",
+   "desc": "文生视频与图生视频、长视频与自回归扩散、视频编辑与高效视频扩散模型。"
+  },
+  "106": {
+   "zh": "聚类",
+   "en": "Clustering",
+   "desc": "k-means、谱聚类、多视图聚类与公平聚类等无监督方法。"
+  },
+  "107": {
+   "zh": "社交媒体与政治话语分析",
+   "en": "Social media & political discourse",
+   "desc": "仇恨言论、政治内容与新闻框架分析、内容审核。"
+  },
+  "108": {
+   "zh": "多智能体强化学习",
+   "en": "Multi-agent reinforcement learning",
+   "desc": "协作多智能体强化学习、多智能体路径规划、通信与分布式决策。"
+  },
+  "109": {
+   "zh": "3D 高斯泼溅",
+   "en": "3D Gaussian splatting",
+   "desc": "高斯泼溅的重建、压缩、加速、编辑与前馈式生成。"
+  },
+  "110": {
+   "zh": "偏好对齐（RLHF/DPO）",
+   "en": "Preference alignment (RLHF/DPO)",
+   "desc": "基于人类反馈与直接偏好优化的大模型对齐方法与理论。"
+  },
+  "111": {
+   "zh": "大模型量化",
+   "en": "LLM quantization",
+   "desc": "低比特与亚比特量化、训练后量化与量化感知训练、MXFP4 等新数据格式。"
+  },
+  "112": {
+   "zh": "入侵检测与网络威胁",
+   "en": "Intrusion detection & cyber threats",
+   "desc": "网络入侵检测、恶意软件与恶意 URL 检测、DDoS 与勒索软件防御。"
+  },
+  "113": {
+   "zh": "材料科学 AI",
+   "en": "AI for materials science",
+   "desc": "机器学习原子间势、晶体与新材料发现、密度泛函计算加速。"
+  },
+  "114": {
+   "zh": "联邦学习",
+   "en": "Federated learning",
+   "desc": "数据异构、个性化与一次性联邦学习、客户端选择与异步训练。"
+  },
+  "115": {
+   "zh": "人脸识别与行人重识别",
+   "en": "Face recognition & person re-ID",
+   "desc": "人脸识别与伪造检测、行人重识别、虹膜识别与反人脸识别。"
+  },
+  "116": {
+   "zh": "医学影像 AI 与放射学大模型",
+   "en": "Medical imaging AI & radiology foundation models",
+   "desc": "胸片、眼底、手术视频等影像诊断，医学视觉语言模型与放射学基础模型。"
+  },
+  "117": {
+   "zh": "同策略蒸馏",
+   "en": "On-policy distillation",
+   "desc": "用学生模型自己生成的样本做蒸馏（on-policy / self-distillation），迁移大模型推理能力。"
+  },
+  "118": {
+   "zh": "SLAM 与里程计",
+   "en": "SLAM & odometry",
+   "desc": "视觉-惯性、激光雷达-惯性 SLAM 与里程计，GNSS 融合与无人机导航。"
+  },
+  "119": {
+   "zh": "量子机器学习",
+   "en": "Quantum machine learning",
+   "desc": "变分量子电路、量子神经网络与量子-经典混合学习。"
+  },
+  "120": {
+   "zh": "大模型推理过程与效率",
+   "en": "LLM reasoning processes & efficiency",
+   "desc": "思维链长度与\"过度思考\"、潜在推理、推理行为分析与小模型推理。"
+  },
+  "121": {
+   "zh": "大模型高效预训练与内部机制",
+   "en": "Efficient LLM pre-training & internals",
+   "desc": "预训练的数据、显存与算力效率，剪枝、零阶优化、激活与先验分析。"
+  },
+  "122": {
+   "zh": "算法公平性与评测可靠性",
+   "en": "Algorithmic fairness & evaluation reliability",
+   "desc": "偏差缓解、分组评估、交叉性公平与评测设计的可靠性。"
+  },
+  "123": {
+   "zh": "医疗大模型",
+   "en": "Medical LLMs",
+   "desc": "临床决策、医学问答与分诊中的大模型及其评测。"
+  },
+  "124": {
+   "zh": "差分隐私",
+   "en": "Differential privacy",
+   "desc": "DP-SGD、隐私审计、隐私机制与差分隐私在线学习。"
+  },
+  "125": {
+   "zh": "KV 缓存与长上下文推理",
+   "en": "KV cache & long-context inference",
+   "desc": "KV 缓存压缩与淘汰、推测解码、长上下文推理加速。"
+  },
+  "126": {
+   "zh": "信息检索与稠密检索",
+   "en": "Information retrieval & dense retrieval",
+   "desc": "稠密与多向量检索、重排序、生成式检索与电商搜索。"
+  },
+  "127": {
+   "zh": "脑电与脑机接口",
+   "en": "EEG & brain-computer interfaces",
+   "desc": "脑电信号分析、运动想象与癫痫检测、脑电基础模型。"
+  },
+  "128": {
+   "zh": "人与 AI 的关系与协作",
+   "en": "Human-AI relationships & collaboration",
+   "desc": "AI 伴侣、人机协作体验、生成式 AI 对工作与用户的影响。"
+  },
+  "129": {
+   "zh": "多模态大模型的视觉理解",
+   "en": "Visual understanding in multimodal LLMs",
+   "desc": "视觉 token 压缩、视觉特征融合、文本密集图像理解与模态交互。"
+  },
+  "130": {
+   "zh": "表征可解释性与稀疏自编码器",
+   "en": "Representation interpretability & SAEs",
+   "desc": "稀疏自编码器、概念提取、神经元与表征几何的可解释性。"
+  },
+  "131": {
+   "zh": "灵巧操作与人形机器人",
+   "en": "Dexterous & humanoid manipulation",
+   "desc": "双手灵巧操作、人形机器人移动操作、从人类视频中学习技能。"
+  },
+  "132": {
+   "zh": "AI 治理与监管",
+   "en": "AI governance & regulation",
+   "desc": "AI 法规与合规、风险框架、信任问题与智能体 AI 治理。"
+  },
+  "133": {
+   "zh": "教育中的 AI",
+   "en": "AI in education",
+   "desc": "AI 辅导、对学生学习的影响、K-12 与高校中的生成式 AI、知识追踪。"
+  },
+  "134": {
+   "zh": "大模型不确定性与自我纠错",
+   "en": "LLM uncertainty & self-correction",
+   "desc": "置信度与不确定性表达、自洽性、自我纠错与提示敏感性。"
+  },
+  "135": {
+   "zh": "雷达感知",
+   "en": "Radar perception",
+   "desc": "毫米波与 4D 雷达感知、雷达-相机融合、合成孔径雷达（SAR）图像。"
+  },
+  "136": {
+   "zh": "目标跟踪",
+   "en": "Object tracking",
+   "desc": "多目标跟踪、三维跟踪、无人机跟踪与点跟踪。"
+  },
+  "137": {
+   "zh": "深度学习理论",
+   "en": "Deep learning theory",
+   "desc": "逼近理论、神经切线核、顿悟（grokking）、KAN 与统计物理视角的网络理论。"
+  },
+  "138": {
+   "zh": "语音识别与语音大模型",
+   "en": "Speech recognition & speech LLMs",
+   "desc": "自动语音识别、说话人日志、语音大模型与副语言信息。"
+  },
+  "139": {
+   "zh": "创意写作与文学理解",
+   "en": "Creative writing & literary analysis",
+   "desc": "大模型故事与诗歌生成、文学风格理解与创造力评测。"
+  },
+  "140": {
+   "zh": "机器人路径规划与探索",
+   "en": "Robot path planning & exploration",
+   "desc": "多机器人规划、自主探索、覆盖路径与动态环境中的轨迹规划。"
+  },
+  "141": {
+   "zh": "AI 系统与推理部署优化",
+   "en": "AI systems & inference serving",
+   "desc": "GPU 与加速器上的大模型推理优化、算子优化、分布式训练与服务。"
+  },
+  "142": {
+   "zh": "扩散 Transformer 与文生图加速",
+   "en": "Diffusion transformers & efficient text-to-image",
+   "desc": "DiT 架构，扩散模型的蒸馏、量化与加速，概念擦除。"
+  },
+  "143": {
+   "zh": "强化学习：离线、目标条件与大模型 RL",
+   "en": "RL: offline, goal-conditioned & for LLMs",
+   "desc": "离线与目标条件强化学习、仿真到真实，以及大模型训练中的强化学习。"
+  },
+  "144": {
+   "zh": "联邦学习安全与隐私",
+   "en": "Federated learning security & privacy",
+   "desc": "拜占庭鲁棒、梯度反演攻击、安全聚合与联邦遗忘。"
+  },
+  "145": {
+   "zh": "图像复原与增强",
+   "en": "Image restoration & enhancement",
+   "desc": "去雾、去模糊、低光增强、超分辨率与通用图像复原。"
+  },
+  "146": {
+   "zh": "对话系统与人机对话",
+   "en": "Dialogue systems & human-LLM interaction",
+   "desc": "多轮与全双工语音对话、话轮转换、用户模拟与个性化交互。"
+  },
+  "147": {
+   "zh": "情感分析与文本标注",
+   "en": "Sentiment analysis & text annotation",
+   "desc": "方面级情感、立场与讽刺检测，大模型作为文本标注者。"
+  },
+  "148": {
+   "zh": "农业与林业 AI",
+   "en": "AI for agriculture & forestry",
+   "desc": "作物与杂草识别、叶片分割、作物分类与树种识别。"
+  },
+  "149": {
+   "zh": "注意力机制与新型序列架构",
+   "en": "Attention & sequence architectures",
+   "desc": "线性注意力、DeltaNet 等次二次复杂度架构，注意力机制的分析与改进。"
+  }
+ }
+}

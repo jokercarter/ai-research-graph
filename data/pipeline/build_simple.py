@@ -196,6 +196,20 @@ def h64(s: str) -> int:
     return fnv1a(s) * 1000003 + len(s)
 
 
+def phase_vocab(a):
+    """vocab.txt.gz: single-word search terms (already stemmed) with their document counts,
+    most common first. The browser uses it to correct typos ("transfomer" -> "transformer")."""
+    z = np.load(TMP / "postings.npz"); df = z["df"]
+    with open(TMP / "words.pkl", "rb") as fh:
+        words = pickle.load(fh)
+    rows = [(w, int(df[j])) for j, w in enumerate(words)
+            if df[j] >= 8 and " " not in w and w.isalpha() and 3 <= len(w) <= 24]
+    rows.sort(key=lambda r: -r[1])
+    with gzip.open(OUT / "vocab.txt.gz", "wt", encoding="utf-8", compresslevel=9) as fh:
+        fh.write("\n".join(f"{w}\t{n}" for w, n in rows))
+    print(f"vocab: {len(rows)} words")
+
+
 def phase_trends1(a):
     docs = load_docs()
     ym0 = int(a.start[:4]) * 12 + int(a.start[5:7]) - 1
@@ -298,11 +312,11 @@ def phase_trends2(a):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("phase", choices=("docs", "cards", "index", "shards", "trends1", "trends2", "all"))
+    ap.add_argument("phase", choices=("docs", "cards", "index", "shards", "vocab", "trends1", "trends2", "all"))
     ap.add_argument("--start", default="2024-11-01")
     ap.add_argument("--end", default="2026-10-31")
     a = ap.parse_args()
-    phases = ["docs", "cards", "index", "shards", "trends1", "trends2"] if a.phase == "all" else [a.phase]
+    phases = ["docs", "cards", "index", "shards", "vocab", "trends1", "trends2"] if a.phase == "all" else [a.phase]
     for ph in phases:
         t = time.time(); globals()[f"phase_{ph}"](a); print(f"[{ph}] {time.time() - t:.0f}s", flush=True)
 

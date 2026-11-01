@@ -15,7 +15,8 @@ function spark(values, w = 240, h = 34) {
 }
 function setNav(name) { document.querySelectorAll("[data-nav]").forEach((a) => a.classList.toggle("active", a.dataset.nav === name)); }
 function updateBadge() { const n = Object.keys(Workspace.state.saved).length; const b = document.getElementById("libBadge"); b.hidden = !n; b.textContent = n; }
-function growthLabel(t) { return t.base ? `×${t.growth}` : "新出现"; }
+function growthLabel(t) { return t.base ? `${t.growth >= 1 ? "+" : ""}${Math.round((t.growth - 1) * 100)}%` : "新出现"; }
+function dirName(t) { return t ? t.name : ""; }
 function monthChart(monthly) {
   if (!monthly?.length) return "";
   const W = 900, H = 170, pad = 26; const max = Math.max(...monthly.map((m) => m[1]), 1); const bw = (W - pad * 2) / monthly.length;
@@ -25,12 +26,12 @@ function monthChart(monthly) {
 }
 
 // ---------------------------------------------------------------------------- shared lists
-function resultItem(l) {
+function resultItem(l, hit) {
   const saved = !!Workspace.state.saved[l.key];
   return `<article class="result"><h3><a href="${paperHref(l.key)}">${esc(l.title)}</a></h3>
     <div class="byline">${esc(l.authors)} · ${esc(l.date)} · ${esc(Core.catName(l.cat))}</div>
     <div class="snippet">${esc(l.snippet)}</div>
-    <div class="row-actions">${l.isNew ? '<span class="chip new">本月新增</span>' : ""}
+    <div class="row-actions">${l.isNew ? '<span class="chip new">本月新增</span>' : ""}${hit?.semOnly ? '<span class="chip sem" title="摘要的意思与搜索内容相近，但不一定包含相同的词">语义相关</span>' : ""}
       <button class="linkbtn ${saved ? "on" : ""}" data-save="${esc(l.key)}" data-title="${esc(l.title)}" data-year="${l.year}">${saved ? "★ 已收藏" : "☆ 收藏"}</button>
       <a class="linkbtn" href="${paperHref(l.key)}">详情与相关论文 →</a>
       <a class="linkbtn" href="https://arxiv.org/pdf/${esc(l.key)}" target="_blank" rel="noopener">PDF</a></div></article>`;
@@ -42,10 +43,12 @@ function bindSave(root) {
   }));
 }
 function trendCard(t, followed) {
-  const ex = t.papers[0];
+  const ex = (t.latest && t.latest[0]) || (t.representative && t.representative[0]);
   return `<a class="card topic-card" href="${trendHref(t.id)}" style="color:inherit;text-decoration:none">
-    <span class="kw">${esc(t.phrase)}</span>${spark(t.monthly.slice(-12).map((m) => m[1]))}
-    <span class="chips"><span class="chip hot">近 3 月 ${fmt(t.recent)} 篇</span><span class="chip">${growthLabel(t)}</span>${followed ? '<span class="chip acc">已关注</span>' : ""}</span>
+    <span class="kw">${esc(dirName(t))}</span>
+    ${t.desc ? `<span class="rep">${esc(t.desc)}</span>` : `<span class="area">${esc((t.keywords || []).slice(0, 4).join(" · "))}</span>`}
+    ${spark(t.monthly.slice(-12).map((m) => m[1]))}
+    <span class="chips"><span class="chip ${t.growth >= 1.15 ? "hot" : ""}">占比 ${growthLabel(t)}</span><span class="chip">近 3 月 ${fmt(t.recent)} 篇</span>${followed ? '<span class="chip acc">已关注</span>' : ""}</span>
     ${ex ? `<span class="rep">例：${esc(ex[1])}</span>` : ""}</a>`;
 }
 
@@ -63,8 +66,8 @@ async function viewHome() {
     <div class="examples">试试：${examples.map((e) => `<a href="#/search?q=${encodeURIComponent(e)}">${esc(e)}</a>`).join("")}</div>
   </section>
   ${followed.length ? `<section class="section"><div class="section-head"><h2>我关注的方向</h2></div><div class="grid">${followed.map((t) => trendCard(t, true)).join("")}</div></section>` : ""}
-  <section class="section"><div class="section-head"><h2>正在升温的研究方向</h2><p>${esc(T.window.recent[0])} 至 ${esc(T.window.recent[1])} 出现频率增长最快的技术短语 · <a href="#/topics">查看全部 ${T.trends.length} 个</a></p></div>
-    <div class="grid">${T.trends.slice(0, 12).map((t) => trendCard(t, !!Workspace.state.topics[t.id])).join("")}</div></section>
+  <section class="section"><div class="section-head"><h2>正在升温的研究方向</h2><p>根据摘要内容把论文归入研究方向，按 ${esc(T.window.recent[0])} 至 ${esc(T.window.recent[1])} 的论文占比增长排序 · <a href="#/topics">查看全部 ${T.directions.length} 个方向</a></p></div>
+    <div class="grid">${T.directions.filter((t) => t.recent >= 40).slice(0, 12).map((t) => trendCard(t, !!Workspace.state.topics[t.id])).join("")}</div></section>
   <section class="section"><div class="section-head"><h2>按领域看最新论文</h2></div>
     <div class="chips">${T.categories.filter((c) => c.total).sort((a, b) => b.total - a.total).map((c) => `<a class="chip acc" href="#/category/${encodeURIComponent(c.id)}">${esc(c.name)} · ${fmt(c.total)}</a>`).join("")}</div></section>`;
   document.getElementById("heroSearch").onsubmit = (e) => { e.preventDefault(); go(document.getElementById("heroQuery").value); };
@@ -73,16 +76,17 @@ async function viewHome() {
 // ---------------------------------------------------------------------------- search
 function parseQuery(hash) {
   const qs = new URLSearchParams(hash.split("?")[1] || "");
-  return { q: qs.get("q") || "", y0: Number(qs.get("y0")) || 0, y1: Number(qs.get("y1")) || 0, cat: qs.has("cat") ? Number(qs.get("cat")) : null,
+  return { q: qs.get("q") || "", y0: Number(qs.get("y0")) || 0, y1: Number(qs.get("y1")) || 0, cat: qs.has("cat") ? Number(qs.get("cat")) : null, dir: qs.has("dir") ? Number(qs.get("dir")) : null,
     sort: qs.get("sort") || "relevance", page: Math.max(1, Number(qs.get("page")) || 1) };
 }
 function searchHref(p) {
   const qs = new URLSearchParams(); qs.set("q", p.q);
   if (p.y0) qs.set("y0", p.y0); if (p.y1) qs.set("y1", p.y1); if (p.cat !== null && p.cat !== undefined) qs.set("cat", p.cat);
+  if (p.dir !== null && p.dir !== undefined) qs.set("dir", p.dir);
   if (p.sort !== "relevance") qs.set("sort", p.sort); if (p.page > 1) qs.set("page", p.page);
   return `#/search?${qs}`;
 }
-function go(q) { q = (q || "").trim(); if (q) location.hash = searchHref({ q, y0: 0, y1: 0, cat: null, sort: "relevance", page: 1 }); }
+function go(q) { q = (q || "").trim(); if (q) location.hash = searchHref({ q, y0: 0, y1: 0, cat: null, dir: null, sort: "relevance", page: 1 }); }
 
 async function viewSearch(hash, token) {
   setNav("");
@@ -92,12 +96,15 @@ async function viewSearch(hash, token) {
   Workspace.addHistory(p.q);
   $view.innerHTML = `<div class="loading">正在检索…</div>`;
   const rw = await Core.rewrite(p.q);
-  const res = await Core.search(rw.english, { yearFrom: p.y0 || 0, yearTo: p.y1 || 9999, cat: p.cat, sort: p.sort });
+  const [res, T] = await Promise.all([Core.fuzzySearch(rw.english, { yearFrom: p.y0 || 0, yearTo: p.y1 || 9999, cat: p.cat, dir: p.dir, sort: p.sort }), Core.getTrends()]);
   if (token !== routeToken) return;
   const per = 20; const pageHits = res.hits.slice((p.page - 1) * per, p.page * per);
   const lites = await Promise.all(pageHits.map((h) => Core.lite(h.sid)));
   if (token !== routeToken) return;
   const catCount = new Map(); res.hits.slice(0, 400).forEach((h) => catCount.set(h.cat, (catCount.get(h.cat) || 0) + 1));
+  const dirCount = new Map(); res.hits.slice(0, 300).forEach((h) => { if (h.dir !== 255) dirCount.set(h.dir, (dirCount.get(h.dir) || 0) + 1); });
+  const dirList = [...dirCount].sort((x, y) => y[1] - x[1]).slice(0, 8);
+  if (p.dir !== null && !dirCount.has(p.dir)) dirList.unshift([p.dir, 0]);
   const cats = Core.manifest.categories;
   const years = [2024, 2025, 2026];
   const yopt = (sel) => `<option value="0">不限</option>` + years.map((y) => `<option ${y === sel ? "selected" : ""}>${y}</option>`).join("");
@@ -106,17 +113,21 @@ async function viewSearch(hash, token) {
     <aside class="side">
       <div><h3>排序</h3><select id="fSort"><option value="relevance">相关度</option><option value="recent">最新发表</option></select></div>
       <div><h3>年份</h3><div class="yearrow"><select id="fY0">${yopt(p.y0)}</select>–<select id="fY1">${yopt(p.y1)}</select></div></div>
+      ${dirList.length ? `<div><h3>研究方向</h3>
+        <label><input type="radio" name="dir" value="" ${p.dir === null ? "checked" : ""}> 全部</label>
+        ${dirList.map(([d, n]) => `<label><input type="radio" name="dir" value="${d}" ${p.dir === d ? "checked" : ""}> ${esc(dirName(T.byId.get(d)) || d)}${n ? ` <span class="m">(${n})</span>` : ""}</label>`).join("")}</div>` : ""}
       <div><h3>领域（arXiv 主分类）</h3>
         <label><input type="radio" name="cat" value="" ${p.cat === null ? "checked" : ""}> 全部</label>
         ${[...catCount].sort((a, b) => b[1] - a[1]).map(([c, n]) => `<label><input type="radio" name="cat" value="${c}" ${p.cat === c ? "checked" : ""}> ${esc(Core.catName(cats[c]))} <span class="m">(${n})</span></label>`).join("")}
       </div>
     </aside>
     <section>
-      <div class="result-meta">约 ${fmt(res.total)} 篇相关论文${rw.via !== "none" ? ` · 检索词：<b>${esc(rw.english)}</b>${rw.via === "local" ? "（本地词典翻译）" : "（AI 翻译）"}` : ""}</div>
+      <div class="result-meta">约 ${fmt(Math.max(res.total, res.keywordTotal))} 篇相关论文 · 按相关度综合关键词与语义排序${rw.via !== "none" ? ` · 检索词：<b>${esc(res.query)}</b>${rw.via === "local" ? "（本地词典翻译）" : "（AI 翻译）"}` : ""}</div>
+      ${res.fixes.length ? `<div class="result-meta">已自动纠正拼写：${res.fixes.map(([a, b]) => `<s>${esc(a)}</s> → <b>${esc(b)}</b>`).join("，")}</div>` : ""}
       <div class="ai" id="aiBox"><div class="ai-head"><strong>AI 研究助手</strong><a class="btn small primary" href="#/ask?q=${encodeURIComponent(p.q)}">用 AI 问答深入</a>
         ${[["review", "梳理综述"], ["related", "找相关论文"], ["compare", "比较方法"], ["gaps", "找研究空白"], ["frontier", "找前沿"]].map(([k, t]) => `<button class="btn small" data-mode="${k}">${t}</button>`).join("")}</div>
         <div id="aiOut" class="note">基于前 30 篇检索结果的摘要生成，结论会标注出处论文（需要网站配置 AI 服务）。</div></div>
-      <div id="results">${lites.length ? lites.map(resultItem).join("") : `<div class="empty">没有找到匹配的论文。可以换个说法，或用英文关键词试试。</div>`}</div>
+      <div id="results">${lites.length ? lites.map((l, i) => resultItem(l, pageHits[i])).join("") : `<div class="empty">没有找到匹配的论文。可以换个说法，或用英文关键词试试。</div>`}</div>
       <div class="pager">${p.page > 1 ? `<a class="btn" href="${searchHref({ ...p, page: p.page - 1 })}">上一页</a>` : ""}
         ${res.hits.length > p.page * per ? `<a class="btn" href="${searchHref({ ...p, page: p.page + 1 })}">下一页</a>` : ""}</div>
     </section>
@@ -127,6 +138,7 @@ async function viewSearch(hash, token) {
   document.getElementById("fY0").onchange = (e) => apply({ y0: Number(e.target.value) });
   document.getElementById("fY1").onchange = (e) => apply({ y1: Number(e.target.value) });
   document.querySelectorAll("input[name=cat]").forEach((r) => (r.onchange = () => apply({ cat: r.value === "" ? null : Number(r.value) })));
+  document.querySelectorAll("input[name=dir]").forEach((r) => (r.onchange = () => apply({ dir: r.value === "" ? null : Number(r.value) })));
   bindSave($view);
   document.querySelectorAll("[data-mode]").forEach((b) => (b.onclick = () => runAI(p.q, b.dataset.mode, res.hits.slice(0, 30))));
 }
@@ -169,8 +181,9 @@ async function viewPaper(key, token) {
   $view.innerHTML = `<div class="loading">正在加载论文…</div>`;
   const sid = await Core.sidOfKey(key);
   if (sid === null) { $view.innerHTML = `<div class="error">当前快照里没有这篇论文（${esc(key)}）。<a href="https://arxiv.org/abs/${esc(key)}" target="_blank" rel="noopener">在 arXiv 上查看</a></div>`; return; }
-  const d = await Core.detail(sid);
+  const [d, dirs, T] = await Promise.all([Core.detail(sid), Core.getDirs(), Core.getTrends()]);
   if (token !== routeToken) return;
+  const myDirs = Core.dirsOf(dirs, sid).map((id) => T.byId.get(id)).filter(Boolean);
   const saved = !!Workspace.state.saved[d.ax];
   document.title = `${d.t} · AI Research Graph`;
   $view.innerHTML = `
@@ -178,6 +191,7 @@ async function viewPaper(key, token) {
     <div>
       <div class="paper-head"><h1>${esc(d.t)}</h1>
         <div class="byline">${esc(d.au.join(", "))}${d.na > d.au.length ? ` 等 ${d.na} 人` : ""}</div>
+        ${myDirs.length ? `<div class="chips" style="margin-top:8px"><span class="conn-desc">研究方向：</span>${myDirs.map((t) => `<a class="chip acc" href="${trendHref(t.id)}">${esc(dirName(t))}</a>`).join("")}</div>` : ""}
         <div class="chips" style="margin-top:8px">${d.cat.map((c) => `<span class="chip">${esc(Core.catName(c))}</span>`).join("")}${d.d.slice(0, 7) === Core.manifest.new_month ? '<span class="chip new">本月新增</span>' : ""}</div></div>
       <div class="row-actions" style="margin:14px 0">
         <button class="btn ${saved ? "on" : ""}" id="bSave">${saved ? "★ 已收藏" : "☆ 收藏"}</button>
@@ -201,10 +215,10 @@ async function viewPaper(key, token) {
   </div>`;
   document.getElementById("bSave").onclick = (e) => { const on = Workspace.toggleSaved(d.ax, { title: d.t, year: Number(d.d.slice(0, 4)), au: d.au.slice(0, 8), ax: d.ax, doi: d.doi }); e.target.classList.toggle("on", on); e.target.textContent = on ? "★ 已收藏" : "☆ 收藏"; updateBadge(); };
   document.getElementById("bBib").onclick = () => { navigator.clipboard?.writeText(bibtex({ title: d.t, year: d.d.slice(0, 4), au: d.au, ax: d.ax, doi: d.doi })); toast("BibTeX 已复制"); };
-  // Related papers: title words count most, plus the most distinctive abstract words.
-  const res = await Core.search(`${d.t} ${d.t} ${d.ab.slice(0, 400)}`, { exclude: sid, limit: 10 });
+  // Related papers: closest abstracts in meaning (falls back to shared title/abstract words).
+  const relHits = await Core.similar(sid, `${d.t} ${d.t} ${d.ab.slice(0, 400)}`, 10);
   if (token !== routeToken) return;
-  const rel = await Promise.all(res.hits.slice(0, 10).map((h) => Core.lite(h.sid)));
+  const rel = await Promise.all(relHits.slice(0, 10).map((h) => Core.lite(h.sid)));
   if (token !== routeToken) return;
   document.getElementById("rel").innerHTML = rel.length ? rel.map((l) => `<div class="mini"><a href="${paperHref(l.key)}">${esc(l.title)}</a><span class="m">${esc(l.date)} · ${esc(Core.catName(l.cat))}</span></div>`).join("") : '<div class="empty">没有找到相关论文</div>';
 }
@@ -217,32 +231,49 @@ function bibtex(p) {
 }
 
 // ---------------------------------------------------------------------------- trends
-async function viewTopics() {
+async function viewTopics(hash) {
   setNav("topics");
   const T = await Core.getTrends();
-  $view.innerHTML = `<h1>升温的研究方向</h1>
-  <p style="color:var(--muted)">统计每篇论文标题和摘要里的技术短语，比较 <b>${esc(T.window.recent[0])} 至 ${esc(T.window.recent[1])}</b> 与之前一年（${esc(T.window.base[0])} 至 ${esc(T.window.base[1])}）里含该短语的论文占比，挑出增长最快、且常出现在论文标题里的短语。增长倍数已扣除论文总量的整体增长。</p>
-  <table class="tt"><thead><tr><th>方向（技术短语）</th><th>近 3 月论文</th><th>之前一年</th><th>占比增长</th><th class="hide-m">近 12 个月</th></tr></thead>
-  <tbody>${T.trends.map((t) => `<tr><td><a href="${trendHref(t.id)}">${esc(t.phrase)}</a>${Workspace.state.topics[t.id] ? ' <span class="chip acc">已关注</span>' : ""}</td>
-    <td class="num">${fmt(t.recent)}</td><td class="num">${fmt(t.base)}</td><td class="num">${growthLabel(t)}</td><td class="hide-m" style="width:150px">${spark(t.monthly.slice(-12).map((m) => m[1]), 150, 26)}</td></tr>`).join("")}</tbody></table>`;
+  const qs = new URLSearchParams((hash || "").split("?")[1] || "");
+  const sort = qs.get("sort") || "score";
+  const cat = qs.get("cat") || "";
+  const keyOf = { score: (t) => t.score, growth: (t) => t.growth, recent: (t) => t.recent, size: (t) => t.size };
+  const list = T.directions.filter((t) => !cat || t.main_category === cat).sort((x, y) => (keyOf[sort] || keyOf.score)(y) - (keyOf[sort] || keyOf.score)(x));
+  // Only arXiv categories with a Chinese name get a filter chip; others are rare main categories of a direction.
+  const cats = [...new Set(T.directions.map((t) => t.main_category).filter((c) => c && Core.manifest.category_names[c]))];
+  const href = (patch) => { const p = new URLSearchParams({ sort, ...(cat ? { cat } : {}), ...patch }); if (!p.get("cat")) p.delete("cat"); return `#/topics?${p}`; };
+  $view.innerHTML = `<h1>研究方向与升温趋势</h1>
+  <p style="color:var(--muted)">根据每篇论文<b>标题和摘要的语义内容</b>，把 ${fmt(Core.manifest.papers)} 篇论文归入 ${T.directions.length} 个研究方向（一篇论文可属于 1–3 个方向）。"占比增长"比较 <b>${esc(T.window.recent[0])} 至 ${esc(T.window.recent[1])}</b> 与之前一年（${esc(T.window.base[0])} 至 ${esc(T.window.base[1])}）该方向论文在全部论文中的占比，已扣除论文总量的整体增长。</p>
+  <div class="areabar"><a class="chip ${cat ? "" : "acc"}" href="${href({ cat: "" })}">全部领域</a>${cats.map((c) => `<a class="chip ${c === cat ? "acc" : ""}" href="${href({ cat: c })}">${esc(Core.catName(c))}</a>`).join("")}</div>
+  <table class="tt"><thead><tr><th>研究方向</th><th data-s="recent">近 3 月</th><th class="hide-m">之前一年</th><th data-s="growth">占比增长</th><th data-s="size" class="hide-m">总数</th><th class="hide-m">近 12 个月</th></tr></thead>
+  <tbody>${list.map((t) => `<tr><td><a href="${trendHref(t.id)}"><b>${esc(dirName(t))}</b></a>${Workspace.state.topics[t.id] ? ' <span class="chip acc">已关注</span>' : ""}
+      <div class="conn-desc">${esc(t.desc || (t.keywords || []).slice(0, 5).join(" · "))}</div></td>
+    <td class="num">${fmt(t.recent)}</td><td class="num hide-m">${fmt(t.base)}</td><td class="num">${growthLabel(t)}</td><td class="num hide-m">${fmt(t.size)}</td>
+    <td class="hide-m" style="width:150px">${spark(t.monthly.slice(-12).map((m) => m[1]), 150, 26)}</td></tr>`).join("")}</tbody></table>`;
+  document.querySelectorAll("th[data-s]").forEach((th) => (th.onclick = () => (location.hash = href({ sort: th.dataset.s }))));
 }
 async function viewTrend(id) {
   setNav("topics");
   const T = await Core.getTrends(); const t = T.byId.get(id);
-  if (!t) { $view.innerHTML = `<div class="error">没有这个方向。</div>`; return; }
+  if (!t) { $view.innerHTML = `<div class="error">没有这个研究方向。</div>`; return; }
   const followed = !!Workspace.state.topics[id];
-  document.title = `${t.phrase} · AI Research Graph`;
-  $view.innerHTML = `<div class="byline"><a href="#/topics">升温的研究方向</a></div>
-  <h1>${esc(t.phrase)}</h1>
+  document.title = `${dirName(t)} · AI Research Graph`;
+  const list = (cards) => (cards || []).map((c) => `<div class="mini"><a href="${paperHref(c[3])}">${esc(c[1])}</a><span class="m">${esc(c[2])} · ${esc(Core.catName(c[4]))}</span></div>`).join("") || '<div class="empty">暂无</div>';
+  $view.innerHTML = `<div class="byline"><a href="#/topics">研究方向</a>${t.main_category ? ` · ${esc(Core.catName(t.main_category))}` : ""}</div>
+  <h1>${esc(dirName(t))}</h1>${t.name_en ? `<div class="byline" style="margin:-4px 0 6px">${esc(t.name_en)}</div>` : ""}
+  ${t.desc ? `<p>${esc(t.desc)}</p>` : ""}
+  <div class="chips" style="margin:6px 0 12px">${(t.keywords || []).map((k) => `<a class="chip acc" href="#/search?q=${encodeURIComponent(k)}">${esc(k)}</a>`).join("")}</div>
   <div class="row-actions"><button class="btn ${followed ? "on" : ""}" id="bFollow">${followed ? "已关注" : "关注这个方向"}</button>
-    <a class="btn primary" href="#/search?q=${encodeURIComponent(t.phrase)}&sort=recent">搜索全部相关论文</a></div>
-  <div class="metric-row"><div class="metric"><b>${fmt(t.recent)}</b><span>近 3 个月含该短语的论文</span></div>
-    <div class="metric"><b>${fmt(t.base)}</b><span>之前一年</span></div><div class="metric"><b>${growthLabel(t)}</b><span>论文占比增长</span></div>
-    <div class="metric"><b>${fmt(t.total)}</b><span>近两年总计</span></div></div>
+    <a class="btn primary" href="#/search?q=${encodeURIComponent((t.keywords || []).slice(0, 3).join(" "))}&dir=${t.id}&sort=recent">查看这个方向的全部论文</a>
+    <a class="btn" href="#/ask?q=${encodeURIComponent(`${dirName(t)}方向最近有哪些主要进展和代表性方法？`)}">问 AI 这个方向的进展</a></div>
+  <div class="metric-row"><div class="metric"><b>${fmt(t.recent)}</b><span>近 3 个月论文</span></div>
+    <div class="metric"><b>${fmt(t.base)}</b><span>之前一年</span></div><div class="metric"><b>${growthLabel(t)}</b><span>论文占比变化</span></div>
+    <div class="metric"><b>${fmt(t.size)}</b><span>近两年总计</span></div></div>
   <h3 style="margin-top:14px">每月论文数</h3>${monthChart(t.monthly)}
-  <section class="section"><h2>标题里提到它的最新论文</h2>
-    ${t.papers.map((c) => `<div class="mini"><a href="${paperHref(c[3])}">${esc(c[1])}</a><span class="m">${esc(c[2])} · ${esc(Core.catName(c[4]))}</span></div>`).join("")}</section>`;
-  document.getElementById("bFollow").onclick = (e) => { const on = Workspace.toggleTopic(id, { name: t.phrase }); e.target.classList.toggle("on", on); e.target.textContent = on ? "已关注" : "关注这个方向"; toast(on ? "已关注，会显示在首页" : "已取消关注"); };
+  <div class="cols" style="margin-top:20px">
+    <section><h2>最新论文</h2><p class="conn-desc">近 3 个月内容上最贴近这个方向的论文</p>${list(t.latest)}</section>
+    <section><h2>最典型的论文</h2><p class="conn-desc">内容最接近这个方向中心的论文，适合快速了解它在研究什么</p>${list(t.representative)}</section></div>`;
+  document.getElementById("bFollow").onclick = (e) => { const on = Workspace.toggleTopic(id, { name: dirName(t) }); e.target.classList.toggle("on", on); e.target.textContent = on ? "已关注" : "关注这个方向"; toast(on ? "已关注，会显示在首页" : "已取消关注"); };
 }
 
 // ---------------------------------------------------------------------------- library / about
@@ -255,7 +286,7 @@ async function viewLibrary() {
   <div class="row-actions" style="margin-bottom:16px"><button class="btn" id="exBib">导出 BibTeX</button><button class="btn" id="exCsv">导出 CSV</button>
     <button class="btn" id="exJson">备份工作区</button><label class="btn">导入备份<input type="file" id="imJson" accept=".json" hidden></label></div>
   <div class="cols"><section><h2>收藏的论文 (${saved.length})</h2>${saved.length ? saved.map(([k, p]) => `<div class="mini"><a href="${paperHref(k)}">${esc(p.title)}</a><span class="m">${p.year || ""} <button class="linkbtn" data-un="${esc(k)}">移除</button></span></div>`).join("") : '<div class="empty">还没有收藏。</div>'}</section>
-    <section><h2>关注的方向 (${topics.length})</h2>${topics.length ? topics.map((t) => `<div class="mini"><a href="${trendHref(t.id)}">${esc(t.phrase)}</a><span class="m">近 3 月 ${fmt(t.recent)} 篇</span></div>`).join("") : '<div class="empty">还没有关注的方向。</div>'}</section></div>`;
+    <section><h2>关注的方向 (${topics.length})</h2>${topics.length ? topics.map((t) => `<div class="mini"><a href="${trendHref(t.id)}">${esc(dirName(t))}</a><span class="m">近 3 月 ${fmt(t.recent)} 篇</span></div>`).join("") : '<div class="empty">还没有关注的方向。</div>'}</section></div>`;
   $view.querySelectorAll("[data-un]").forEach((b) => (b.onclick = () => { delete W.saved[b.dataset.un]; Workspace.save(); updateBadge(); viewLibrary(); }));
   const dl = (name, text, type) => { const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([text], { type })); a.download = name; a.click(); };
   document.getElementById("exBib").onclick = () => dl("ai-research-graph.bib", saved.map(([, p]) => bibtex(p)).join("\n\n"), "text/plain");
@@ -269,7 +300,7 @@ function viewAbout() {
   $view.innerHTML = `<div class="prose"><h1>数据说明</h1>
   <p>当前快照：<b>${esc(m.version)}</b>，每月更新一次。收录 ${esc(m.window[0])} 至 ${esc(m.window[1])} 在 arXiv 首次发布、主分类或交叉分类属于 AI 相关方向（cs.AI、cs.LG、cs.CL、cs.CV、cs.RO、cs.IR、cs.MA、cs.NE、stat.ML 等）的论文，共 ${fmt(m.papers)} 篇。</p>
   <h2>这是简化版</h2><ul><li>只收录近两年的 arXiv 论文；没有上传 arXiv 的会议/期刊论文不在库里。</li><li>暂不显示被引数和引用关系，可以通过论文页的 Semantic Scholar 链接查看。</li>
-    <li>"相关论文"按标题和摘要关键词检索得出，还没有使用语义向量和引用关系。</li><li>"升温方向"基于技术短语出现频率的变化，反映关注度上升，不代表质量判断。</li></ul>
+    <li>"相关论文"按标题和摘要关键词检索得出，还没有使用语义向量和引用关系。</li><li>"研究方向"由论文标题和摘要的语义向量（bge-base 模型）聚类得到，每篇论文按内容相似度归入 1–3 个方向；"升温"指该方向近 3 个月的论文占比相对之前一年上升，反映关注度变化，不代表质量判断。</li></ul>
   <h2>数据来源</h2><ul>${m.sources.map((s) => `<li><a href="${esc(s.url)}" target="_blank" rel="noopener">${esc(s.name)}</a>：${esc(s.use)}</li>`).join("")}</ul>
   <h2>隐私</h2><p>搜索在你的浏览器里完成；只有使用 AI 研究助手或中文检索时，问题和候选论文的标题、摘要片段会经服务器发送给 AI 模型。收藏和关注只保存在本地浏览器。</p></div>`;
 }
@@ -285,7 +316,7 @@ async function route() {
     else if (path === "/search") await viewSearch(hash, token);
     else if (path.startsWith("/paper/")) await viewPaper(decodeURIComponent(path.slice(7)), token);
     else if (path.startsWith("/category/")) await viewCategory(decodeURIComponent(path.slice(10)), hash, token);
-    else if (path === "/topics") await viewTopics();
+    else if (path === "/topics") await viewTopics(hash);
     else if (path.startsWith("/trend/")) await viewTrend(Number(path.slice(7)));
     else if (path === "/ask") await viewAsk(hash);
     else if (path === "/library") await viewLibrary();

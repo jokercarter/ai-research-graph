@@ -62,12 +62,12 @@ const Connect = {
   isDirect() { const a = this.active(); return a && (a.mode === "anthropic" || a.mode === "openai"); },
 
   // ---- direct browser calls (visitor's own key) ------------------------------------------
-  _req(system, messages, maxTokens, stream) {
+  _req(system, messages, maxTokens, stream, model) {
     const a = this.active();
     if (a.mode === "anthropic") {
       return fetch("https://api.anthropic.com/v1/messages", { method: "POST",
         headers: { "x-api-key": this.cfg.anthropicKey, "anthropic-version": "2023-06-01", "content-type": "application/json", "anthropic-dangerous-direct-browser-access": "true" },
-        body: JSON.stringify({ model: this.choice().api, max_tokens: maxTokens, system, messages, stream }) });
+        body: JSON.stringify({ model: model || this.choice().api, max_tokens: maxTokens, system, messages, stream }) });
     }
     return fetch("https://api.openai.com/v1/responses", { method: "POST",
       headers: { authorization: `Bearer ${this.cfg.openaiKey}`, "content-type": "application/json" },
@@ -79,11 +79,14 @@ const Connect = {
     const hint = res.status === 401 ? "（key 无效或已被撤销）" : res.status === 404 ? "（模型名不存在或你的账号无权使用）" : res.status === 429 ? "（额度或频率超限）" : "";
     return new Error(`模型服务返回 ${res.status}${hint}${msg ? "：" + String(msg).slice(0, 160) : ""}`);
   },
-  async complete(system, messages, maxTokens = 400) {
+  // Token use of the last direct call: {input, output}.
+  lastUsage: null,
+  async complete(system, messages, maxTokens = 400, model = "") {
     const a = this.active();
-    const res = await this._req(system, messages, maxTokens, false);
+    const res = await this._req(system, messages, maxTokens, false, model);
     if (!res.ok) throw await this._err(res);
     const d = await res.json();
+    if (d.usage) this.lastUsage = { input: d.usage.input_tokens || 0, output: d.usage.output_tokens || 0 };
     if (a.mode === "anthropic") return (d.content || []).filter((c) => c.type === "text").map((c) => c.text).join("");
     if (typeof d.output_text === "string") return d.output_text;
     return (d.output || []).flatMap((o) => o.content || []).map((c) => c.text || "").join("");
@@ -92,6 +95,7 @@ const Connect = {
     const a = this.active();
     const res = await this._req(system, messages, maxTokens, true);
     if (!res.ok || !res.body) throw await this._err(res);
+    this.lastUsage = { input: 0, output: 0 };
     const reader = res.body.getReader(); const dec = new TextDecoder(); let buf = "";
     for (;;) {
       const { done, value } = await reader.read();
@@ -104,6 +108,8 @@ const Connect = {
         if (!payload || payload === "[DONE]") continue;
         try {
           const ev = JSON.parse(payload);
+          if (ev.type === "message_start" && ev.message?.usage) this.lastUsage.input = ev.message.usage.input_tokens || 0;
+          if (ev.type === "message_delta" && ev.usage) this.lastUsage.output = ev.usage.output_tokens || 0;
           if (a.mode === "anthropic" && ev.type === "content_block_delta" && ev.delta?.type === "text_delta") onText(ev.delta.text);
           else if (a.mode === "openai" && ev.type === "response.output_text.delta") onText(ev.delta || "");
           else if (ev.type === "error") throw new Error(ev.error?.message || "模型服务出错");
