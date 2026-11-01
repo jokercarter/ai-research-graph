@@ -124,7 +124,9 @@ async function loadData() {
   // Keep the default research window at the requested ten-year horizon.
   // The slider may still expose older external foundation nodes when present.
   state.yearMin = 2016;
-  state.yearMax = Math.max(2026, ...years);
+  // Avoid spreading the full node list into Math.max; the release can contain
+  // hundreds of thousands of papers and would exceed the call-stack limit.
+  state.yearMax = years.reduce((maxYear, year) => Math.max(maxYear, year), 2026);
   setupFilters();
   applyFilters();
   $("loadingState").hidden = true;
