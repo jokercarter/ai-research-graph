@@ -20,6 +20,33 @@ npm ci
 node "$env:USERPROFILE\.codex\plugins\cache\openai-curated-remote\sites\1.1.2\scripts\build-site.mjs"
 ```
 
+AI 搜索现在支持五种研究模式：找相关论文、梳理文献综述、比较研究方法、寻找研究空白和寻找研究前沿。请求会携带年份、主题和最低引用数筛选；返回的每条结论都保留 `evidence_ids`，前端可以直接定位论文节点、展开 1–3 跳邻域并加入对比。OpenAI 不可用时，页面会使用同一批候选的本地标题、主题、作者、年份和引用量检索，并明确标注为本地回退结果。
+
+浏览器科研工作区使用本地存储保存收藏、对比列表、笔记、已读状态和搜索历史。检索结果可导出 CSV；单篇论文的来源、元数据完整度和摘要状态会显示在右侧详情面板。没有摘要的论文保持为空，界面会提示“需要进一步核实”，不会生成猜测摘要。
+
+## 补充公开元数据
+
+200,000 篇快照的引用边不因元数据补全而改变。使用下面的脚本可以按 OpenAlex 批量补充摘要、作者、主题、venue、DOI、开放链接、引用量和字段完整度，并以 Semantic Scholar 的 DOI/arXiv 结果作为补充。脚本支持断点文件，缺失字段会继续留空：
+
+```powershell
+python data/enrich_ai_cs_metadata.py `
+  --input data/ai_cs_graph_200000.json.gz `
+  --output data/ai_cs_graph_200000.enriched.json.gz `
+  --checkpoint data/metadata_enrichment.checkpoint.json `
+  --provider both --batch-size 50
+```
+
+先做小批量检查：
+
+```powershell
+python data/enrich_ai_cs_metadata.py `
+  --max-nodes 100 `
+  --output outputs/metadata-enrichment-smoke.json.gz `
+  --checkpoint outputs/metadata-enrichment-smoke.checkpoint.json
+```
+
+公开 API 有速率限制；可以设置 `OPENALEX_MAILTO` 和 `SEMANTIC_SCHOLAR_API_KEY`，并保留 checkpoint 后继续运行。生成新的快照后，将它压缩复制为前端的 `data.sample.json.gz` 或两个分片即可被页面读取。
+
 ## 更新论文数据
 
 默认快照为 **200,000 个近十年 AI 优先论文节点、435,731 条有向引用边**。节点来自 CitationCS 的 Computer Science 记录，优先保留 Artificial Intelligence、machine learning、deep learning、computer vision、natural language、robotics 和 neural 等主题，并按年份比例抽样；边只复制快照中的真实 `ref_lst` 引用关系。网站保留快照中的全部节点，画布初始按引用量显示前 100 个节点，也可切换到 200、500 或 1,000 个节点；搜索、主题筛选或邻域展开后的当前簇若超过 20 个节点，会按引用边方向取拓扑排序最前层，并叠加数据源提供的获奖论文信号，用黄色大节点标记前沿论文；搜索还会展开相关引用节点并显示少量标题，年份筛选和 1–3 跳邻域用于继续探索关系。
