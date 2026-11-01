@@ -168,3 +168,30 @@ button.chip { border: none; cursor: pointer; font: inherit; font-size: 12.5px; }
 
 .modelpick { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--muted); }
 .modelpick select { border: 1px solid var(--line); border-radius: 7px; padding: 4px 8px; font: inherit; font-size: 13px; background: #fff; color: var(--ink); }
+
+.chip.sem { background: #eef4ff; color: #3456a8; border-color: #c9d8f7; }
+
+/* AI 问答：历史对话侧边栏 */
+.asklayout { display: grid; grid-template-columns: 250px minmax(0, 1fr); gap: 22px; align-items: start; }
+.askside { position: sticky; top: 76px; max-height: calc(100vh - 96px); display: flex; flex-direction: column; gap: 10px; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 12px; }
+.conv-filter { width: 100%; box-sizing: border-box; border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px; font: inherit; font-size: 13px; outline: none; }
+.conv-filter:focus { border-color: var(--accent); }
+.conv-list { overflow-y: auto; flex: 1; min-height: 60px; margin: 0 -4px; padding: 0 4px; }
+.conv-group { font-size: 11.5px; color: var(--faint); margin: 10px 4px 4px; }
+.conv { display: flex; align-items: center; gap: 6px; padding: 7px 8px; border-radius: 8px; cursor: pointer; font-size: 13.5px; }
+.conv:hover { background: #f3f4f1; }
+.conv.on { background: var(--accent-soft); color: var(--accent); }
+.conv-t { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.conv-n { font-size: 11px; color: var(--faint); }
+.conv-x { border: none; background: none; color: var(--faint); padding: 0 2px; font-size: 14px; cursor: pointer; visibility: hidden; white-space: nowrap; }
+.conv:hover .conv-x, .conv.armed .conv-x { visibility: visible; }
+.conv.armed .conv-x { color: var(--hot); font-size: 12px; }
+.conv-empty, .conv-note { font-size: 12px; color: var(--faint); padding: 6px 4px; }
+.asklayout .askwrap { max-width: none; margin: 0; }
+.side-toggle { display: none; }
+@media (max-width: 860px) {
+  .asklayout { grid-template-columns: 1fr; }
+  .askside { display: none; position: static; max-height: 60vh; }
+  .askside.open { display: flex; }
+  .side-toggle { display: inline-flex; }
+}

@@ -127,9 +127,23 @@ const Core = {
   },
   catName(c) { return this.manifest.category_names[c] || c; },
   async getTrends() {
-    if (!this.trends) { const t = await load("trends.json.gz"); t.byId = new Map(t.trends.map((x) => [x.id, x])); this.trends = t; }
+    if (!this.trends) {
+      const t = await load("trends.json.gz");
+      // Older phrase-based files: present them in the same shape as semantic directions.
+      t.directions = t.directions || (t.trends || []).map((x) => ({ ...x, name: x.phrase, keywords: [x.phrase], latest: x.papers, representative: [], size: x.total, score: x.score }));
+      t.byId = new Map(t.directions.map((x) => [x.id, x]));
+      this.trends = t;
+    }
     return this.trends;
   },
+  // Research directions of every paper (3 bytes per paper, 255 = none), from abstract content.
+  async getDirs() {
+    if (this.dirs === undefined) {
+      try { this.dirs = new Uint8Array(await load("dir.bin.gz", "bin")); } catch { this.dirs = null; }
+    }
+    return this.dirs;
+  },
+  dirsOf(dirs, sid) { if (!dirs) return []; const out = []; for (let j = 0; j < 3; j++) { const v = dirs[sid * 3 + j]; if (v !== 255) out.push(v); } return out; },
   async getMeta() {
     if (!this.meta) this.meta = new Uint8Array(await load("meta.bin.gz", "bin"));
     return this.meta;
@@ -180,13 +194,14 @@ const Core = {
     for (let i = 0; i < n; i++) { if (m[i * 4 + 2] === catIdx) { if (lo < 0) lo = i; hi = i; } else if (lo >= 0) break; }
     return lo < 0 ? [0, 0] : [lo, hi + 1];
   },
-  async search(english, { yearFrom = 0, yearTo = 9999, cat = null, sort = "relevance", exclude = -1, limit = 400 } = {}) {
+  async search(english, { yearFrom = 0, yearTo = 9999, cat = null, dir = null, sort = "relevance", exclude = -1, limit = 400 } = {}) {
     const uni = tokens(english);
     const uniq = [...new Set(uni)];
     const bis = [...new Set(uni.slice(1).map((w, i) => `${uni[i]} ${w}`))];
     const terms = [...uniq.map((t) => [t, 1]), ...bis.map((t) => [t, 1.6])].slice(0, 24);
     if (!terms.length) return { hits: [], total: 0 };
     const meta = await this.getMeta();
+    const dirs = await this.getDirs();
     const shards = await Promise.all(terms.map(([t]) => load(`t/${String(fnv1a(t) % this.manifest.term_shards).padStart(4, "0")}.json.gz`).catch(() => ({}))));
     const score = new Map(); const matched = new Map();
     terms.forEach(([t, w], idx) => {
@@ -206,8 +221,9 @@ const Core = {
       const y = this.year(meta, sid);
       if (y < yearFrom || y > yearTo) continue;
       if (cat !== null && this.cat(meta, sid) !== cat) continue;
+      if (dir !== null && !this.dirsOf(dirs, sid).includes(dir)) continue;
       const cover = nUni ? (matched.get(sid) || 0) / nUni : 1;
-      hits.push({ sid, score: s * (0.3 + 0.7 * cover * cover), ym: this.ym(meta, sid), cat: this.cat(meta, sid) });
+      hits.push({ sid, score: s * (0.3 + 0.7 * cover * cover), ym: this.ym(meta, sid), cat: this.cat(meta, sid), dir: dirs ? dirs[sid * 3] : 255 });
     }
     hits.sort((a, b) => b.score - a.score);
     let top = hits.slice(0, limit);
@@ -215,6 +231,200 @@ const Core = {
     return { hits: top, total: hits.length };
   },
 };
+
+// ---- fuzzy search: typo correction + meaning vectors + rank fusion ------------------
+// Keyword (BM25) results only contain papers that share words with the query. Meaning
+// vectors (bge embeddings of every abstract, reduced to 256-d int8, grouped by research
+// direction under data/v/) also find papers that say the same thing in other words.
+function editDistance(a, b, max) {
+  if (Math.abs(a.length - b.length) > max) return max + 1;
+  let prev = Array.from({ length: b.length + 1 }, (_, j) => j);
+  for (let i = 1; i <= a.length; i++) {
+    const cur = [i]; let best = i;
+    for (let j = 1; j <= b.length; j++) {
+      let v = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+      cur.push(v); if (v < best) best = v;
+    }
+    if (best > max) return max + 1;
+    prev = cur;
+  }
+  return prev[b.length];
+}
+
+Object.assign(Core, {
+  async getVocab() {
+    if (this.vocab === undefined) {
+      try {
+        const buf = await load("vocab.txt.gz", "bin");
+        const words = new Map();
+        for (const line of new TextDecoder().decode(buf).split("\n")) { const [w, n] = line.split("\t"); if (w) words.set(w, Number(n)); }
+        this.vocab = words;
+      } catch { this.vocab = null; }
+    }
+    return this.vocab;
+  },
+  // "transfomer architecure" -> "transformer architecture" (only words that are rare or unknown in the corpus).
+  async correct(english) {
+    const vocab = await this.getVocab();
+    if (!vocab) return { text: english, fixes: [] };
+    const fixes = [];
+    const text = String(english).replace(/[A-Za-z]{4,}/g, (word) => {
+      if (word === word.toUpperCase()) return word; // acronyms (RLHF, VLA) stay as typed
+      const w = stem(word.toLowerCase());
+      const have = vocab.get(w) || 0;
+      if (have >= 15 || STOP.has(word.toLowerCase())) return word;
+      const max = w.length <= 5 ? 1 : 2;
+      let best = null, bestD = max + 1, bestN = 0;
+      for (const [cand, n] of vocab) {
+        if (n < Math.max(50, have * 20)) break; // vocab is sorted by frequency
+        if (Math.abs(cand.length - w.length) > max || cand[0] !== w[0] && cand[1] !== w[1]) continue;
+        const d = editDistance(w, cand, max);
+        if (d < bestD || (d === bestD && n > bestN)) { best = cand; bestD = d; bestN = n; }
+      }
+      if (!best || bestD > max) return word;
+      fixes.push([word, best]);
+      return best;
+    });
+    return { text, fixes };
+  },
+  async vecCentroids() {
+    if (this.cent === undefined) {
+      try {
+        const buf = await load("v/centroids.bin.gz", "bin");
+        const [k, dim] = new Uint32Array(buf, 0, 2);
+        this.cent = { k, dim, scale: new Float32Array(buf, 8, k), q: new Int8Array(buf, 8 + 4 * k, k * dim) };
+      } catch { this.cent = null; }
+    }
+    return this.cent;
+  },
+  async vecShard(t) {
+    const buf = await load(`v/${String(t).padStart(3, "0")}.bin.gz`, "bin");
+    if (!buf.parsed) {
+      const [n, dim] = new Uint32Array(buf, 0, 2);
+      buf.parsed = { n, dim, sid: new Int32Array(buf, 8, n), scale: new Float32Array(buf, 8 + 4 * n, n), q: new Int8Array(buf, 8 + 8 * n, n * dim) };
+    }
+    return buf.parsed;
+  },
+  // The stored meaning vector of one paper (shard = its main research direction).
+  async paperVec(sid) {
+    const dirs = await this.getDirs();
+    const t = dirs ? dirs[sid * 3] : 255;
+    if (t === 255) return null;
+    const sh = await this.vecShard(t).catch(() => null);
+    if (!sh) return null;
+    let lo = 0, hi = sh.n - 1;
+    while (lo <= hi) {
+      const mid = (lo + hi) >> 1; const v = sh.sid[mid];
+      if (v === sid) { const out = new Float32Array(sh.dim); const s = sh.scale[mid]; for (let j = 0; j < sh.dim; j++) out[j] = sh.q[mid * sh.dim + j] * s; return out; }
+      if (v < sid) lo = mid + 1; else hi = mid - 1;
+    }
+    return null;
+  },
+  // Query vector from the local embedder (serve_local.py); null on the public site.
+  async embedQuery(text) {
+    if (this.embedOff || !text.trim()) return null;
+    try {
+      const ctl = new AbortController(); const timer = setTimeout(() => ctl.abort(), 4000);
+      const res = await fetch("/api/embed", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ q: text }), signal: ctl.signal });
+      clearTimeout(timer);
+      if (!res.ok) { if ([404, 405, 501, 503].includes(res.status)) this.embedOff = true; return null; }
+      const j = await res.json();
+      if (j.v) return Float32Array.from(j.v);
+      if (j.raw) return this.projectRaw(j.raw);
+      return null;
+    } catch { return null; }
+  },
+  // 768-d model output -> the 256-d space of data/v (same projection as the pipeline).
+  async projectRaw(raw) {
+    if (this.pca === undefined) {
+      try {
+        const buf = await load("v/pca.bin.gz", "bin");
+        const [din, dout] = new Uint32Array(buf, 0, 2);
+        this.pca = { din, dout, mu: new Float32Array(buf, 8, din), P: new Float32Array(buf, 8 + 4 * din, din * dout) };
+      } catch { this.pca = null; }
+    }
+    const p = this.pca;
+    if (!p || raw.length !== p.din) return null;
+    let n = 0; for (const x of raw) n += x * x; n = Math.sqrt(n) || 1;
+    const c = Float32Array.from(raw, (x, i) => x / n - p.mu[i]);
+    const out = new Float32Array(p.dout);
+    for (let r = 0; r < p.dout; r++) { let s = 0; const o = r * p.din; for (let j = 0; j < p.din; j++) s += p.P[o + j] * c[j]; out[r] = s; }
+    return out;
+  },
+  // No embedder: average the vectors of the best keyword matches (pseudo relevance feedback).
+  async feedbackVec(hits) {
+    const vecs = (await Promise.all(hits.slice(0, 6).map((h) => this.paperVec(h.sid)))).filter(Boolean);
+    if (!vecs.length) return null;
+    const out = new Float32Array(vecs[0].length);
+    vecs.forEach((v, i) => { const w = 1 / (1 + i * 0.3); for (let j = 0; j < v.length; j++) out[j] += v[j] * w; });
+    return out;
+  },
+  async semantic(qv, { yearFrom = 0, yearTo = 9999, cat = null, dir = null, exclude = -1, probe = 8, limit = 300, dirs: only = null } = {}) {
+    const C = await this.vecCentroids();
+    if (!C || !qv) return [];
+    let norm = 0; for (const x of qv) norm += x * x; norm = Math.sqrt(norm) || 1;
+    const q = Float32Array.from(qv, (x) => x / norm);
+    const cs = [];
+    for (let t = 0; t < C.k; t++) { let s = 0; const o = t * C.dim; for (let j = 0; j < C.dim; j++) s += C.q[o + j] * q[j]; cs.push([s * C.scale[t], t]); }
+    cs.sort((a, b) => b[0] - a[0]);
+    const pick = only?.length ? [...only] : cs.slice(0, probe).map((x) => x[1]);
+    if (dir !== null && !pick.includes(dir)) pick.unshift(dir);
+    const [meta, dirs, shards] = await Promise.all([this.getMeta(), this.getDirs(), Promise.all(pick.map((t) => this.vecShard(t).catch(() => null)))]);
+    const out = [];
+    for (const sh of shards) {
+      if (!sh) continue;
+      const { n, dim } = sh;
+      for (let i = 0; i < n; i++) {
+        const sid = sh.sid[i];
+        if (sid === exclude) continue;
+        let s = 0; const o = i * dim;
+        for (let j = 0; j < dim; j++) s += sh.q[o + j] * q[j];
+        out.push([s * sh.scale[i], sid]);
+      }
+    }
+    out.sort((a, b) => b[0] - a[0]);
+    const hits = [];
+    for (const [s, sid] of out) {
+      const y = this.year(meta, sid);
+      if (y < yearFrom || y > yearTo) continue;
+      if (cat !== null && this.cat(meta, sid) !== cat) continue;
+      if (dir !== null && !this.dirsOf(dirs, sid).includes(dir)) continue;
+      hits.push({ sid, sim: s, ym: this.ym(meta, sid), cat: this.cat(meta, sid), dir: dirs ? dirs[sid * 3] : 255 });
+      if (hits.length >= limit) break;
+    }
+    return hits;
+  },
+  // Main search: keywords + meaning, fused by reciprocal rank. Returns how the query was
+  // understood (typo fixes, whether a real query vector was used).
+  async fuzzySearch(english, opts = {}) {
+    const { sort = "relevance", limit = 400 } = opts;
+    const fixed = await this.correct(english);
+    const kw = await this.search(fixed.text, { ...opts, sort: "relevance", limit: 600 });
+    let qv = await this.embedQuery(fixed.text);
+    const mode = qv ? "embed" : "feedback";
+    if (!qv && kw.hits.length) qv = await this.feedbackVec(kw.hits);
+    const sem = qv ? await this.semantic(qv, { ...opts, limit: 300 }) : [];
+    const K = 60; const fused = new Map();
+    // Keyword matches weigh a little more when the meaning vector came only from feedback.
+    const wKw = mode === "embed" ? 1 : 1.3, wSem = mode === "embed" ? 1.2 : 1;
+    kw.hits.forEach((h, i) => fused.set(h.sid, { ...h, kwRank: i, score: wKw / (K + i) }));
+    sem.forEach((h, i) => {
+      const f = fused.get(h.sid);
+      if (f) { f.score += wSem / (K + i); f.semRank = i; f.sim = h.sim; }
+      else if (h.sim > 0.35 || i < 60) fused.set(h.sid, { ...h, semRank: i, score: wSem / (K + i), semOnly: true });
+    });
+    const hits = [...fused.values()].sort((a, b) => b.score - a.score);
+    let top = hits.slice(0, limit);
+    if (sort === "recent") top = top.slice(0, 200).sort((a, b) => b.ym - a.ym || b.score - a.score);
+    return { hits: top, total: hits.length, fixes: fixed.fixes, query: fixed.text, semantic: sem.length ? mode : "none", keywordTotal: kw.total };
+  },
+  // Papers closest in meaning to one paper (falls back to keywords).
+  async similar(sid, text, limit = 10) {
+    const v = await this.paperVec(sid);
+    if (v) { const hits = await this.semantic(v, { exclude: sid, probe: 4, limit }); if (hits.length) return hits; }
+    return (await this.search(text, { exclude: sid, limit })).hits;
+  },
+});
 
 window.Core = Core;
 window.Workspace = Workspace;
