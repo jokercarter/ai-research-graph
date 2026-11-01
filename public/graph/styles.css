@@ -76,6 +76,12 @@ button { color: inherit; }
 .ai-search-form button { flex: 0 0 auto; padding: 0 9px; border: 1px solid rgba(189, 150, 255, .36); border-radius: 6px; color: #f0e7ff; background: rgba(189, 150, 255, .16); cursor: pointer; font-size: 11px; transition: .18s ease; }
 .ai-search-form button:hover { border-color: rgba(189, 150, 255, .68); background: rgba(189, 150, 255, .25); }
 .ai-search-form button:disabled { cursor: wait; opacity: .58; }
+.ai-plan-button { flex: 0 0 auto; padding: 0 8px; border: 1px solid rgba(123, 226, 255, .22); border-radius: 6px; color: var(--cyan); background: rgba(123, 226, 255, .06); cursor: pointer; font-size: 10px; }
+.ai-plan-button:hover { border-color: rgba(123, 226, 255, .5); background: rgba(123, 226, 255, .12); }
+.ai-question-plan { display: grid; gap: 3px; margin-top: 8px; padding: 7px 8px; border-left: 2px solid var(--cyan); color: var(--muted); background: rgba(123, 226, 255, .05); font-size: 9px; line-height: 1.45; }
+.ai-question-plan strong { color: var(--cyan); font-size: 9px; }
+.ai-question-plan small { color: var(--faint); font-size: 8px; }
+.ai-question-plan ul { margin: 2px 0 0; padding-left: 15px; color: var(--faint); }
 .ai-control-grid { display: grid; grid-template-columns: 1.2fr 1.1fr .8fr 1.4fr; gap: 6px; margin-top: 8px; }
 .ai-control { min-width: 0; display: grid; gap: 4px; color: var(--faint); font-size: 9px; }
 .ai-control .select-control, .ai-filter-input, .ai-number-control { width: 100%; min-width: 0; height: 27px; padding: 4px 6px; border: 1px solid rgba(189, 150, 255, .2); border-radius: 5px; outline: 0; color: var(--text); background: rgba(6, 11, 21, .68); font-size: 10px; }
@@ -120,11 +126,25 @@ button { color: inherit; }
 .ai-result-actions button:hover { color: var(--text); }
 .ai-completeness { margin-left: auto; color: var(--faint); font-size: 8px; }
 .ai-research-view { margin-top: 8px; padding-top: 7px; border-top: 1px solid rgba(122, 155, 207, .1); color: var(--muted); font-size: 9px; }
+.ai-reading-list { display: grid; gap: 4px; margin-top: 6px; }
+.ai-reading-item { display: flex; align-items: center; gap: 5px; padding: 4px 5px; border: 1px solid rgba(123, 226, 255, .12); border-radius: 4px; background: rgba(9, 16, 28, .45); }
+.ai-reading-item > b { width: 16px; color: var(--cyan); text-align: center; }
+.ai-reading-copy { min-width: 0; flex: 1; display: grid; gap: 2px; }
+.ai-reading-copy strong { color: var(--violet); font-size: 8px; font-weight: 500; }
+.ai-reading-copy span { overflow: hidden; color: var(--muted); text-overflow: ellipsis; white-space: nowrap; }
+.ai-reading-item button { padding: 2px 4px; border: 1px solid rgba(123, 226, 255, .16); border-radius: 3px; color: var(--cyan); background: none; cursor: pointer; font-size: 8px; }
+.ai-reading-item button:hover { background: rgba(123, 226, 255, .1); }
+.ai-reading-path small { display: block; margin-top: 5px; color: var(--faint); font-size: 8px; }
 .ai-table-wrap { margin-top: 5px; overflow-x: auto; }
 .ai-research-view table { width: 100%; border-collapse: collapse; color: var(--faint); font-size: 9px; }
 .ai-research-view th, .ai-research-view td { padding: 4px 5px; border-bottom: 1px solid rgba(122, 155, 207, .1); text-align: left; vertical-align: top; white-space: nowrap; }
 .ai-research-view th { color: var(--cyan); font-weight: 500; }
 .ai-comparison-view small { display: block; margin-top: 5px; color: var(--faint); font-size: 8px; line-height: 1.35; }
+.ai-evidence-matrix .ai-table-wrap { max-height: 280px; }
+.matrix-input { width: 92px; min-height: 25px; padding: 3px 4px; border: 1px solid rgba(122, 155, 207, .15); border-radius: 3px; outline: 0; color: var(--muted); background: rgba(6, 11, 21, .5); font: inherit; font-size: 8px; }
+.matrix-input:focus { border-color: rgba(123, 226, 255, .42); color: var(--text); }
+.ai-evidence-matrix th small { display: block; margin-top: 2px; color: var(--faint); font-size: 8px; font-weight: 400; }
+.ai-evidence-matrix > small { display: block; margin-top: 5px; color: var(--faint); font-size: 8px; }
 .ai-timeline { display: flex; gap: 5px; margin-top: 5px; overflow-x: auto; }
 .ai-timeline span { min-width: 43px; padding: 4px; border: 1px solid rgba(123, 226, 255, .14); border-radius: 4px; color: var(--faint); text-align: center; }
 .ai-timeline b { display: block; color: var(--cyan); font-size: 10px; }
@@ -134,7 +154,7 @@ button { color: inherit; }
 .ai-gap-bar i { position: absolute; inset: 0 auto 0 0; border-radius: inherit; background: rgba(123, 226, 255, .08); }
 .ai-gap-bar b, .ai-gap-bar em { position: relative; z-index: 1; font-style: normal; font-weight: 400; }
 .ai-gap-bar b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.ai-workspace-strip { display: flex; align-items: center; gap: 9px; margin-top: 8px; padding-top: 7px; border-top: 1px solid rgba(122, 155, 207, .12); color: var(--faint); font-size: 9px; }
+.ai-workspace-strip { display: flex; flex-wrap: wrap; align-items: center; gap: 9px; margin-top: 8px; padding-top: 7px; border-top: 1px solid rgba(122, 155, 207, .12); color: var(--faint); font-size: 9px; }
 .ai-workspace-strip strong { color: var(--violet); }
 .ai-workspace-strip .text-button { font-size: 9px; }
 .ai-workspace-strip button:disabled { color: var(--faint); cursor: not-allowed; opacity: .55; }
@@ -230,6 +250,10 @@ kbd { padding: 2px 5px; border: 1px solid var(--border); border-radius: 4px; col
 .detail-actions { display: flex; gap: 5px; margin-top: 12px; }
 .detail-action { flex: 1; min-width: 0; padding: 7px 4px; border: 1px solid rgba(189, 150, 255, .24); border-radius: 5px; color: var(--violet); background: rgba(189, 150, 255, .06); cursor: pointer; font-size: 9px; }
 .detail-action:hover { border-color: rgba(189, 150, 255, .6); background: rgba(189, 150, 255, .13); }
+.detail-exclude-row { display: flex; gap: 5px; margin-top: 6px; }
+.detail-exclude-row .select-control { min-width: 0; flex: 1; font-size: 9px; }
+.detail-exclude-button { padding: 5px 7px; border: 1px solid rgba(246, 179, 122, .26); border-radius: 5px; color: var(--orange); background: rgba(246, 179, 122, .05); cursor: pointer; font-size: 9px; }
+.detail-exclude-button:disabled { cursor: default; opacity: .55; }
 .detail-note-label { display: block; margin-top: 12px; color: var(--faint); font-size: 9px; }
 .detail-note { width: 100%; min-height: 58px; margin-top: 5px; resize: vertical; padding: 7px; border: 1px solid var(--border); border-radius: 5px; outline: 0; color: var(--text); background: rgba(6, 11, 21, .62); font: inherit; font-size: 10px; line-height: 1.45; }
 .detail-note:focus { border-color: rgba(123, 226, 255, .55); }

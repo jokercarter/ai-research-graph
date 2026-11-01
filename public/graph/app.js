@@ -46,7 +46,7 @@ const state = {
 };
 
 const WORKSPACE_KEY = "ai-research-graph.workspace.v1";
-const DEFAULT_WORKSPACE = { favorites: [], compare: [], notes: {}, read: {}, tags: {}, history: [], savedQueries: [] };
+const DEFAULT_WORKSPACE = { favorites: [], compare: [], notes: {}, read: {}, tags: {}, history: [], savedQueries: [], readingQueue: [], excluded: {}, matrix: {} };
 const AI_MODES = {
   related: "找相关论文",
   review: "梳理文献综述",
@@ -108,7 +108,10 @@ function loadWorkspace() {
       read: stored?.read && typeof stored.read === "object" ? stored.read : {},
       tags: stored?.tags && typeof stored.tags === "object" ? stored.tags : {},
       history: Array.isArray(stored?.history) ? stored.history : [],
-      savedQueries: Array.isArray(stored?.savedQueries) ? stored.savedQueries : []
+      savedQueries: Array.isArray(stored?.savedQueries) ? stored.savedQueries : [],
+      readingQueue: Array.isArray(stored?.readingQueue) ? stored.readingQueue : [],
+      excluded: stored?.excluded && typeof stored.excluded === "object" ? stored.excluded : {},
+      matrix: stored?.matrix && typeof stored.matrix === "object" ? stored.matrix : {}
     };
   } catch {
     return { ...DEFAULT_WORKSPACE };
@@ -121,6 +124,35 @@ function persistWorkspace() {
 
 function workspaceHas(collection, id) {
   return Array.isArray(state.workspace?.[collection]) && state.workspace[collection].includes(String(id));
+}
+
+function queueHas(id) {
+  return Array.isArray(state.workspace?.readingQueue) && state.workspace.readingQueue.includes(String(id));
+}
+
+function excludedReason(id) {
+  return state.workspace?.excluded?.[String(id)] || "";
+}
+
+function toggleReadingQueue(id) {
+  const value = String(id);
+  const queue = state.workspace.readingQueue || [];
+  state.workspace.readingQueue = queue.includes(value) ? queue.filter((item) => item !== value) : [...queue, value];
+  persistWorkspace();
+  updateWorkspaceControls();
+}
+
+function excludePaper(id, reason = "other") {
+  const value = String(id);
+  state.workspace.excluded[value] = reason;
+  state.workspace.readingQueue = (state.workspace.readingQueue || []).filter((item) => item !== value);
+  state.workspace.compare = (state.workspace.compare || []).filter((item) => item !== value);
+  state.compareIds = new Set(state.workspace.compare || []);
+  persistWorkspace();
+  state.aiResults = state.aiResults.filter((result) => String(result.id) !== value);
+  state.aiSearchIds = new Set(state.aiResults.map((result) => String(result.id)));
+  renderAiResults();
+  applyFilters();
 }
 
 function toggleWorkspaceId(collection, id) {
@@ -296,6 +328,35 @@ function formatCount(value) {
   return new Intl.NumberFormat("zh-CN").format(Number(value) || 0);
 }
 
+function buildResearchQuestionPlan(query) {
+  const text = String(query || "").trim();
+  const lower = text.toLowerCase();
+  const terms = expandQueryTerms(text).filter((term) => !/^[\u4e00-\u9fff]{2}$/.test(term)).slice(0, 10);
+  let focus = "研究主题的主要方法、演化和证据";
+  if (/隐私|privacy|安全|secure/i.test(text)) focus = "隐私保护、威胁模型和效果权衡";
+  else if (/对齐|alignment|multimodal|多模态/i.test(text)) focus = "对齐目标、训练方法和评测指标";
+  else if (/数据集|benchmark|基准/i.test(text)) focus = "数据集、基准任务和评价协议";
+  else if (/效率|通信|communication|速度|成本/i.test(text)) focus = "效率、资源开销和可扩展性";
+  const subQuestions = [
+    `核心问题：${text}`,
+    `${focus}分别有哪些代表性工作？`,
+    "不同方法使用了哪些数据集、指标和对比基线？",
+    "哪些结论已经有多篇论文支持，哪些字段仍需要打开原文核实？",
+    "近三年是否出现了新的方法组合或研究方向？"
+  ];
+  return { focus, expandedTerms: terms, subQuestions, suggestedMode: lower.includes("空白") ? "gaps" : "review" };
+}
+
+function renderQuestionPlan(query = $("aiSearchInput")?.value || "") {
+  const plan = $("aiQuestionPlan");
+  if (!plan) return;
+  const text = String(query).trim();
+  if (text.length < 2) { plan.hidden = true; plan.innerHTML = ""; return; }
+  const result = buildResearchQuestionPlan(text);
+  plan.hidden = false;
+  plan.innerHTML = `<strong>研究问题拆解</strong><span>关注：${escapeHtml(result.focus)}</span><small>扩展词：${escapeHtml(result.expandedTerms.join("、") || "等待更多元数据")}</small><ul>${result.subQuestions.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>`;
+}
+
 function setupFilters() {
   state.workspace = state.workspace || loadWorkspace();
   state.compareIds = new Set(state.workspace.compare || []);
@@ -321,6 +382,7 @@ function setupFilters() {
     applyFilters();
   });
   $("aiSearchForm").addEventListener("submit", (event) => { event.preventDefault(); runAiSearch(); });
+  $("aiPlanButton").addEventListener("click", () => renderQuestionPlan());
   $("aiSearchMode").addEventListener("change", (event) => { state.aiMode = event.target.value; });
   [$("aiYearFrom"), $("aiYearTo"), $("aiMinCitations"), $("aiTopicFilter"), $("aiPublicationType"), $("aiVenueFilter")].forEach((control) => control.addEventListener("change", syncAiFilters));
   [$("aiTopicFilter"), $("aiVenueFilter")].forEach((control) => control.addEventListener("input", syncAiFilters));
@@ -335,6 +397,17 @@ function setupFilters() {
   });
   $("aiExportButton").addEventListener("click", exportAiResults);
   $("aiSaveQueryButton").addEventListener("click", saveCurrentQuery);
+  $("queueButton").addEventListener("click", () => {
+    if (!state.selectedId) return;
+    toggleReadingQueue(state.selectedId);
+    renderDetails(state.data.nodes.find((node) => node.id === state.selectedId));
+  });
+  $("excludeButton").addEventListener("click", () => {
+    if (!state.selectedId) return;
+    excludePaper(state.selectedId, $("detailExcludeReason").value || "other");
+    state.selectedId = null;
+    renderDetails(null);
+  });
   $("favoriteButton").addEventListener("click", () => { if (state.selectedId) { toggleWorkspaceId("favorites", state.selectedId); renderDetails(state.data.nodes.find((node) => node.id === state.selectedId)); } });
   $("compareButton").addEventListener("click", () => { if (state.selectedId) { toggleWorkspaceId("compare", state.selectedId); renderDetails(state.data.nodes.find((node) => node.id === state.selectedId)); } });
   $("readButton").addEventListener("click", () => { if (state.selectedId) { state.workspace.read[state.selectedId] = true; persistWorkspace(); renderDetails(state.data.nodes.find((node) => node.id === state.selectedId)); } });
@@ -543,7 +616,7 @@ function buildAiCandidates(query, filters = state.aiFilters) {
     const topicText = normalizeText((node.topics || []).join(" "));
     const venueText = normalizeText(node.venue);
     const publicationType = normalizePublicationType(node.publication_type || node.type || "");
-    return !node.external && node.year >= minYear && node.year <= maxYear && (node.citations_count || 0) >= minCitations && (!topicTerms.length || topicTerms.every((term) => topicText.includes(term))) && (!typeTerms.length || typeTerms.includes(publicationType)) && (!venueTerms.length || venueTerms.some((term) => venueText.includes(term)));
+    return !node.external && !excludedReason(node.id) && node.year >= minYear && node.year <= maxYear && (node.citations_count || 0) >= minCitations && (!topicTerms.length || topicTerms.every((term) => topicText.includes(term))) && (!typeTerms.length || typeTerms.includes(publicationType)) && (!venueTerms.length || venueTerms.some((term) => venueText.includes(term)));
   }).map((node) => {
     const title = normalizeText(node.title);
     const text = normalizeText([node.title, node.venue, ...(node.authors || []), ...(node.topics || []), node.abstract].join(" "));
@@ -672,7 +745,7 @@ function renderAiResults() {
     const graph = result.graph_signals || {};
     return `<article class="ai-result" data-ai-result="${escapeHtml(id)}">
       <div class="ai-result-main"><label class="ai-compare-check"><input type="checkbox" data-compare-id="${escapeHtml(id)}"${checked} /><span></span></label><button type="button" class="ai-result-open" data-ai-open="${escapeHtml(id)}"><span class="ai-result-title">${escapeHtml(result.title || "未命名论文")}</span><span class="ai-result-meta">${escapeHtml([result.year, result.venue, `引用 ${formatCount(graph.citation_count ?? result.citations_count ?? 0)}`, result.reason].filter(Boolean).join(" · "))}</span></button></div>
-      <div class="ai-result-actions"><button type="button" data-ai-focus="${escapeHtml(id)}">定位图中</button><button type="button" data-ai-neighborhood="${escapeHtml(id)}">1 跳邻域</button><button type="button" data-ai-favorite="${escapeHtml(id)}">${workspaceHas("favorites", id) ? "已收藏" : "收藏"}</button><span class="ai-completeness">元数据 ${Math.round(Number(state.data.nodes.find((node) => node.id === id)?.metadata_completeness || 0) * 100)}%</span></div>
+      <div class="ai-result-actions"><button type="button" data-ai-focus="${escapeHtml(id)}">定位图中</button><button type="button" data-ai-neighborhood="${escapeHtml(id)}">1 跳邻域</button><button type="button" data-ai-queue="${escapeHtml(id)}">${queueHas(id) ? "已加入阅读" : "加入阅读"}</button><button type="button" data-ai-favorite="${escapeHtml(id)}">${workspaceHas("favorites", id) ? "已收藏" : "收藏"}</button><button type="button" data-ai-exclude="${escapeHtml(id)}">排除</button><span class="ai-completeness">元数据 ${Math.round(Number(state.data.nodes.find((node) => node.id === id)?.metadata_completeness || 0) * 100)}%</span></div>
     </article>`;
   }).join("");
   const view = payload.view || {};
@@ -680,11 +753,31 @@ function renderAiResults() {
   const timeline = timelineItems.length ? `<div class="ai-research-view"><strong>时间线</strong><div class="ai-timeline">${timelineItems.slice(0, 10).map((item) => `<span><b>${escapeHtml(item.year)}</b>${formatCount((item.ids || []).length)} 篇</span>`).join("")}</div></div>` : "";
   const gaps = renderResearchGapView(Array.isArray(view.gaps) ? view.gaps : []);
   const comparison = (state.aiMode === "compare" || state.workspace.compare.length >= 2) ? renderComparisonTable() : "";
-  results.innerHTML = `${answerBlock}<div class="ai-result-list">${items}</div>${comparison}${timeline}${gaps}`;
+  const readingPath = renderReadingPath();
+  const evidenceMatrix = renderEvidenceMatrix();
+  results.innerHTML = `${answerBlock}<div class="ai-result-list">${items}</div>${readingPath}${comparison}${evidenceMatrix}${timeline}${gaps}`;
   results.querySelectorAll("[data-ai-open]").forEach((item) => item.addEventListener("click", () => focusAiResult(item.dataset.aiOpen)));
   results.querySelectorAll("[data-ai-focus]").forEach((item) => item.addEventListener("click", () => focusAiResult(item.dataset.aiFocus)));
   results.querySelectorAll("[data-ai-neighborhood]").forEach((item) => item.addEventListener("click", () => focusAiResult(item.dataset.aiNeighborhood, true)));
   results.querySelectorAll("[data-ai-evidence]").forEach((item) => item.addEventListener("click", () => focusAiResult(item.dataset.aiEvidence)));
+  results.querySelectorAll("[data-ai-queue]").forEach((item) => item.addEventListener("click", () => {
+    toggleReadingQueue(item.dataset.aiQueue);
+    renderAiResults();
+  }));
+  results.querySelectorAll("[data-ai-exclude]").forEach((item) => item.addEventListener("click", () => {
+    excludePaper(item.dataset.aiExclude, "out-of-scope");
+  }));
+  results.querySelectorAll("[data-reading-open]").forEach((item) => item.addEventListener("click", () => focusAiResult(item.dataset.readingOpen)));
+  results.querySelectorAll("[data-reading-queue]").forEach((item) => item.addEventListener("click", () => {
+    toggleReadingQueue(item.dataset.readingQueue);
+    renderAiResults();
+  }));
+  results.querySelectorAll("[data-matrix-id]").forEach((input) => input.addEventListener("change", () => {
+    const id = input.dataset.matrixId;
+    const field = input.dataset.matrixField;
+    state.workspace.matrix[id] = { ...(state.workspace.matrix[id] || {}), [field]: input.value.trim() };
+    persistWorkspace();
+  }));
   results.querySelectorAll("[data-ai-favorite]").forEach((item) => item.addEventListener("click", () => {
     toggleWorkspaceId("favorites", item.dataset.aiFavorite);
     renderAiResults();
@@ -711,6 +804,49 @@ function renderResearchGapView(modelGaps) {
   ];
   const bars = topTopics.map(([topic, count]) => `<span class="ai-gap-bar"><i style="width:${Math.max(12, Math.round((count / Math.max(1, nodes.length)) * 100))}%"></i><b>${escapeHtml(topic)}</b><em>${count}</em></span>`).join("");
   return `<div class="ai-research-view ai-gap-view"><strong>研究空白图（需要进一步核实）</strong>${bars ? `<div class="ai-gap-bars">${bars}</div>` : ""}<ul>${gaps.slice(0, 4).map((item) => `<li>${escapeHtml(typeof item === "string" ? item : item?.text || "")}</li>`).join("")}</ul></div>`;
+}
+
+function renderReadingPath() {
+  const results = state.aiResults.slice(0, 12);
+  if (!results.length) return "";
+  const byId = new Map(results.map((result) => [String(result.id), result]));
+  const nodes = results.map((result) => state.data.nodes.find((node) => node.id === String(result.id))).filter(Boolean);
+  const groups = [
+    ["先读基础", [...nodes].sort((a, b) => (a.year || 0) - (b.year || 0) || (b.citations_count || 0) - (a.citations_count || 0))],
+    ["重点方法", [...nodes].sort((a, b) => (byId.get(b.id)?.relevance_score || 0) - (byId.get(a.id)?.relevance_score || 0))],
+    ["看近期方向", [...nodes].sort((a, b) => (b.year || 0) - (a.year || 0) || (b.citations_count || 0) - (a.citations_count || 0))]
+  ];
+  const ordered = [];
+  groups.forEach(([label, group]) => {
+    const node = group.find((candidate) => !ordered.some((item) => item.node.id === candidate.id));
+    if (node) ordered.push({ label, node });
+  });
+  nodes.forEach((node) => {
+    if (ordered.length < 6 && !ordered.some((item) => item.node.id === node.id)) ordered.push({ label: "继续阅读", node });
+  });
+  return `<div class="ai-research-view ai-reading-path"><strong>推荐阅读顺序</strong><div class="ai-reading-list">${ordered.slice(0, 6).map((item, index) => `<div class="ai-reading-item"><b>${index + 1}</b><span class="ai-reading-copy"><strong>${escapeHtml(item.label)}</strong><span>${escapeHtml(shortTitle(item.node.title))} · ${item.node.year || "年份未知"}</span></span><button type="button" data-reading-open="${escapeHtml(item.node.id)}">打开</button><button type="button" data-reading-queue="${escapeHtml(item.node.id)}">${queueHas(item.node.id) ? "已加入" : "加入队列"}</button></div>`).join("")}</div><small>顺序综合发表年份、引用量、相关性和近期性；它是阅读建议，不是论文质量结论。</small></div>`;
+}
+
+function renderEvidenceMatrix() {
+  const ids = state.workspace.compare?.length ? state.workspace.compare.slice(0, 5).map(String) : state.aiResults.slice(0, 5).map((result) => String(result.id));
+  const rows = ids.map((id) => {
+    const node = state.data.nodes.find((item) => item.id === id);
+    const result = state.aiResults.find((item) => String(item.id) === id) || {};
+    if (!node) return "";
+    const saved = state.workspace.matrix?.[id] || {};
+    const values = {
+      question: saved.question || "元数据不足",
+      method: saved.method || (node.abstract ? "从摘要中提取" : "元数据不足"),
+      dataset: saved.dataset || "元数据不足",
+      metrics: saved.metrics || "元数据不足",
+      takeaway: saved.takeaway || result.reason || "元数据不足",
+      limitation: saved.limitation || (node.abstract ? "请从摘要和原文核实" : "需要进一步核实")
+    };
+    const cell = (field) => `<input class="matrix-input" data-matrix-id="${escapeHtml(id)}" data-matrix-field="${field}" value="${escapeHtml(values[field])}" aria-label="${escapeHtml(field)}" />`;
+    return `<tr><th>${escapeHtml(shortTitle(node.title))}<small>${node.year || ""}</small></th><td>${cell("question")}</td><td>${cell("method")}</td><td>${cell("dataset")}</td><td>${cell("metrics")}</td><td>${cell("takeaway")}</td><td>${cell("limitation")}</td></tr>`;
+  }).join("");
+  if (!rows) return "";
+  return `<div class="ai-research-view ai-evidence-matrix"><strong>证据矩阵</strong><div class="ai-table-wrap"><table><thead><tr><th>论文</th><th>研究问题</th><th>方法</th><th>数据集</th><th>指标</th><th>主要结论</th><th>局限</th></tr></thead><tbody>${rows}</tbody></table></div><small>表格字段可以直接编辑并保存在浏览器本地；“元数据不足”表示当前快照没有足够证据。</small></div>`;
 }
 
 function renderComparisonTable() {
@@ -743,9 +879,12 @@ function saveSearchHistory(query, mode, filters) {
 
 function updateWorkspaceControls() {
   const count = state.workspace?.compare?.length || 0;
+  const queueCount = state.workspace?.readingQueue?.length || 0;
   if ($("aiCompareCount")) $("aiCompareCount").textContent = String(count);
+  if ($("aiQueueCount")) $("aiQueueCount").textContent = String(queueCount);
   if ($("aiCompareButton")) $("aiCompareButton").disabled = count < 2;
   if ($("compareButton") && state.selectedId) $("compareButton").textContent = workspaceHas("compare", state.selectedId) ? "✓ 已加入对比" : "＋ 加入对比";
+  if ($("queueButton") && state.selectedId) $("queueButton").textContent = queueHas(state.selectedId) ? "✓ 待读队列" : "＋ 阅读队列";
 }
 
 function downloadText(filename, content, type = "text/plain;charset=utf-8") {
@@ -826,6 +965,7 @@ async function runAiSearch() {
     if (query.length < 2) $("aiSearchStatus").textContent = "请输入至少 2 个字符。";
     return;
   }
+  renderQuestionPlan(query);
   syncAiFilters();
   state.aiMode = $("aiSearchMode").value || "review";
   let candidates = buildAiCandidates(query, state.aiFilters);
@@ -1103,6 +1243,10 @@ function renderDetails(node) {
   $("favoriteButton").textContent = workspaceHas("favorites", node.id) ? "★ 已收藏" : "☆ 收藏";
   $("compareButton").textContent = workspaceHas("compare", node.id) ? "✓ 已加入对比" : "＋ 加入对比";
   $("readButton").textContent = state.workspace.read?.[node.id] ? "✓ 已读" : "标记已读";
+  $("queueButton").textContent = queueHas(node.id) ? "✓ 待读队列" : "＋ 阅读队列";
+  $("excludeButton").textContent = excludedReason(node.id) ? "已排除" : "排除";
+  $("excludeButton").disabled = Boolean(excludedReason(node.id));
+  if (excludedReason(node.id)) $("detailExcludeReason").value = excludedReason(node.id);
   $("detailNote").value = state.workspace.notes?.[node.id] || "";
   const incoming = state.data.edges.filter((edge) => edge.target === node.id);
   const outgoing = state.data.edges.filter((edge) => edge.source === node.id);
@@ -1137,6 +1281,7 @@ function resetView() {
   state.detailRelationMode = "related";
   $("searchInput").value = "";
   $("aiSearchInput").value = "";
+  renderQuestionPlan("");
   $("aiSearchMode").value = "review";
   $("aiYearFrom").value = state.yearMin;
   $("aiYearTo").value = state.yearMax;
