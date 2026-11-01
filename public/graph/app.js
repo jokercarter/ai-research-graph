@@ -34,10 +34,64 @@ const state = {
   aiSearchIds: new Set(),
   aiResults: [],
   aiAnswer: "",
+  aiPayload: null,
+  aiMode: "review",
+  aiFilters: { year_from: 2016, year_to: 2026, topics: [], publication_types: [], venues: [], min_citations: 0 },
   aiBusy: false,
+  compareIds: new Set(),
+  workspace: null,
   width: 0,
   height: 0
 };
+
+const WORKSPACE_KEY = "ai-research-graph.workspace.v1";
+const DEFAULT_WORKSPACE = { favorites: [], compare: [], notes: {}, read: {}, tags: {}, history: [], savedQueries: [] };
+const AI_MODES = {
+  related: "找相关论文",
+  review: "梳理文献综述",
+  compare: "比较研究方法",
+  gaps: "寻找研究空白",
+  frontier: "寻找研究前沿"
+};
+
+function loadWorkspace() {
+  try {
+    const stored = JSON.parse(localStorage.getItem(WORKSPACE_KEY) || "null");
+    return {
+      ...DEFAULT_WORKSPACE,
+      ...(stored || {}),
+      favorites: Array.isArray(stored?.favorites) ? stored.favorites : [],
+      compare: Array.isArray(stored?.compare) ? stored.compare : [],
+      notes: stored?.notes && typeof stored.notes === "object" ? stored.notes : {},
+      read: stored?.read && typeof stored.read === "object" ? stored.read : {},
+      tags: stored?.tags && typeof stored.tags === "object" ? stored.tags : {},
+      history: Array.isArray(stored?.history) ? stored.history : [],
+      savedQueries: Array.isArray(stored?.savedQueries) ? stored.savedQueries : []
+    };
+  } catch {
+    return { ...DEFAULT_WORKSPACE };
+  }
+}
+
+function persistWorkspace() {
+  try { localStorage.setItem(WORKSPACE_KEY, JSON.stringify(state.workspace)); } catch { /* local storage may be unavailable */ }
+}
+
+function workspaceHas(collection, id) {
+  return Array.isArray(state.workspace?.[collection]) && state.workspace[collection].includes(String(id));
+}
+
+function toggleWorkspaceId(collection, id) {
+  const value = String(id);
+  const list = state.workspace[collection] || [];
+  state.workspace[collection] = list.includes(value) ? list.filter((item) => item !== value) : [...list, value];
+  persistWorkspace();
+  state.compareIds = new Set(state.workspace.compare || []);
+  updateWorkspaceControls();
+}
+
+state.workspace = loadWorkspace();
+state.compareIds = new Set(state.workspace.compare || []);
 
 const $ = (id) => document.getElementById(id);
 const svg = d3.select("#graph");
@@ -61,11 +115,16 @@ function normalizeData(raw) {
     year: Number(node.year ?? node.publication_year) || 2016,
     title: node.title || "Untitled paper",
     venue: node.venue || node.primary_topic?.display_name || node.source || "OpenAlex",
-    topics: normalizeTopics(node.topics),
+    topics: normalizeTopics(node.topics || (node.primary_topic ? [node.primary_topic] : [])),
     authors: normalizeAuthors(node.authors),
     abstract: node.abstract || "",
     citations_count: Number(node.citations_count ?? node.cited_by_count ?? 0),
     url: node.url || node.open_access_url || node.landing_page_url || node.doi || (node.openalex_id ? `https://openalex.org/${String(node.openalex_id).split("/").pop()}` : ""),
+    metadata_completeness: Number(node.metadata_completeness ?? node.field_completeness ?? 0) || 0,
+    publication_type: node.publication_type || node.type || "",
+    openalex_id: node.openalex_id || node.ids?.openalex || "",
+    doi: node.doi || node.ids?.doi || "",
+    arxiv_id: node.arxiv_id || node.ids?.arxiv || "",
     external: Boolean(node.external ?? node.is_external_reference)
   }));
   const known = new Set(nodes.map((node) => node.id));
@@ -188,6 +247,8 @@ function formatCount(value) {
 }
 
 function setupFilters() {
+  state.workspace = state.workspace || loadWorkspace();
+  state.compareIds = new Set(state.workspace.compare || []);
   const topicCounts = new Map();
   state.data.nodes.flatMap((node) => node.topics).forEach((topic) => topicCounts.set(topic, (topicCounts.get(topic) || 0) + 1));
   // OpenAlex can return many long-tail topic labels. Keep the control rail
@@ -210,6 +271,29 @@ function setupFilters() {
     applyFilters();
   });
   $("aiSearchForm").addEventListener("submit", (event) => { event.preventDefault(); runAiSearch(); });
+  $("aiSearchMode").addEventListener("change", (event) => { state.aiMode = event.target.value; });
+  [$("aiYearFrom"), $("aiYearTo"), $("aiMinCitations"), $("aiTopicFilter"), $("aiPublicationType"), $("aiVenueFilter")].forEach((control) => control.addEventListener("change", syncAiFilters));
+  [$("aiTopicFilter"), $("aiVenueFilter")].forEach((control) => control.addEventListener("input", syncAiFilters));
+  $("aiCompareButton").addEventListener("click", () => {
+    state.aiMode = "compare";
+    $("aiSearchMode").value = "compare";
+    if (state.compareIds.size) {
+      const titles = [...state.compareIds].map((id) => state.data.nodes.find((node) => node.id === id)?.title).filter(Boolean);
+      $("aiSearchInput").value = titles.slice(0, 5).join("；");
+      runAiSearch();
+    }
+  });
+  $("aiExportButton").addEventListener("click", exportAiResults);
+  $("favoriteButton").addEventListener("click", () => { if (state.selectedId) { toggleWorkspaceId("favorites", state.selectedId); renderDetails(state.data.nodes.find((node) => node.id === state.selectedId)); } });
+  $("compareButton").addEventListener("click", () => { if (state.selectedId) { toggleWorkspaceId("compare", state.selectedId); renderDetails(state.data.nodes.find((node) => node.id === state.selectedId)); } });
+  $("readButton").addEventListener("click", () => { if (state.selectedId) { state.workspace.read[state.selectedId] = true; persistWorkspace(); renderDetails(state.data.nodes.find((node) => node.id === state.selectedId)); } });
+  $("saveNoteButton").addEventListener("click", () => {
+    if (!state.selectedId) return;
+    state.workspace.notes[state.selectedId] = $("detailNote").value.trim();
+    persistWorkspace();
+    $("saveNoteButton").textContent = "已保存";
+    setTimeout(() => { if ($("saveNoteButton")) $("saveNoteButton").textContent = "保存笔记"; }, 1200);
+  });
   $("showExternal").addEventListener("change", (event) => { state.showExternal = event.target.checked; applyFilters(); });
   $("showLabels").addEventListener("change", (event) => { state.showLabels = event.target.checked; applyLabelVisibility(); });
   $("renderLimit").addEventListener("change", (event) => {
@@ -237,6 +321,20 @@ function setupFilters() {
   $("zoomOut").addEventListener("click", () => svg.transition().call(state.zoom.scaleBy, .8));
   $("fitGraph").addEventListener("click", fitGraph);
   window.addEventListener("keydown", (event) => { if (event.key === "/" && document.activeElement !== $("searchInput")) { event.preventDefault(); $("searchInput").focus(); } });
+  updateWorkspaceControls();
+}
+
+function syncAiFilters() {
+  const from = Number($("aiYearFrom").value) || state.yearMin;
+  const to = Number($("aiYearTo").value) || state.yearMax;
+  state.aiFilters = {
+    year_from: Math.min(from, to),
+    year_to: Math.max(from, to),
+    topics: $("aiTopicFilter").value.trim() ? [$("aiTopicFilter").value.trim()] : [],
+    publication_types: $("aiPublicationType").value ? [$("aiPublicationType").value] : [],
+    venues: $("aiVenueFilter").value.trim() ? [$("aiVenueFilter").value.trim()] : [],
+    min_citations: Math.max(0, Number($("aiMinCitations").value) || 0)
+  };
 }
 
 function handleYearInput() {
@@ -371,14 +469,27 @@ function aiQueryTerms(query) {
   return [...new Set([...latin, ...grams])].filter((term) => term.length >= 2);
 }
 
-function buildAiCandidates(query) {
+function buildAiCandidates(query, filters = state.aiFilters) {
   const terms = aiQueryTerms(query);
-  const ranked = state.data.nodes.map((node) => {
+  const topicTerms = (filters.topics || []).flatMap(aiQueryTerms);
+  const minYear = Number(filters.year_from) || 0;
+  const maxYear = Number(filters.year_to) || 9999;
+  const minCitations = Number(filters.min_citations) || 0;
+  const typeTerms = (filters.publication_types || []).map((value) => String(value).toLowerCase());
+  const venueTerms = (filters.venues || []).map((value) => String(value).toLowerCase());
+  const ranked = state.data.nodes.filter((node) => {
+    const topicText = (node.topics || []).join(" ").toLowerCase();
+    const venueText = String(node.venue || "").toLowerCase();
+    const publicationType = String(node.publication_type || node.type || "").toLowerCase();
+    return !node.external && node.year >= minYear && node.year <= maxYear && (node.citations_count || 0) >= minCitations && (!topicTerms.length || topicTerms.every((term) => topicText.includes(term))) && (!typeTerms.length || typeTerms.includes(publicationType)) && (!venueTerms.length || venueTerms.some((term) => venueText.includes(term)));
+  }).map((node) => {
     const title = String(node.title || "").toLowerCase();
     const text = [node.title, node.venue, ...(node.authors || []), ...(node.topics || []), node.abstract].join(" ").toLowerCase();
     const lexical = terms.reduce((score, term) => score + (title.includes(term) ? 8 : 0) + (text.includes(term) ? 2 : 0), 0);
+    const topicMatch = topicTerms.reduce((score, term) => score + (text.includes(term) ? 3 : 0), 0);
+    const recency = Math.max(0, (node.year || 0) - 2015) * 0.05;
     const citationBoost = Math.log1p(node.citations_count || 0) * 0.22;
-    return { node, score: lexical + citationBoost };
+    return { node, score: lexical + topicMatch + citationBoost + recency };
   }).sort((a, b) => b.score - a.score || (b.node.citations_count || 0) - (a.node.citations_count || 0));
   const selected = ranked.filter((item) => item.score > 0).slice(0, 64);
   const selectedIds = new Set(selected.map((item) => item.node.id));
@@ -391,34 +502,166 @@ function buildAiCandidates(query) {
     authors: (node.authors || []).slice(0, 5),
     topics: (node.topics || []).slice(0, 6),
     citations_count: node.citations_count || 0,
-    abstract: String(node.abstract || "").slice(0, 420)
+    abstract: String(node.abstract || "").slice(0, 800),
+    metadata_completeness: node.metadata_completeness || 0,
+    publication_type: node.publication_type || "",
+    is_frontier: state.frontierIds.has(node.id) || hasAwardSignal(node)
   }));
+}
+
+function localAiPayload(query, mode, filters, candidates) {
+  const terms = aiQueryTerms(query);
+  const selected = candidates.slice(0, 12);
+  const topicCounts = new Map();
+  const venueCounts = new Map();
+  selected.forEach((candidate) => {
+    (candidate.topics || []).forEach((topic) => topicCounts.set(topic, (topicCounts.get(topic) || 0) + 1));
+    if (candidate.venue) venueCounts.set(candidate.venue, (venueCounts.get(candidate.venue) || 0) + 1);
+  });
+  const years = [...new Set(selected.map((candidate) => candidate.year).filter(Boolean))].sort((a, b) => a - b);
+  const resultItems = selected.map((candidate, index) => ({
+    ...candidate,
+    relevance_score: Math.max(0.15, Math.min(0.99, 0.98 - index * 0.045)),
+    reason: terms.length ? `标题、主题或作者字段与“${query.slice(0, 36)}”匹配；引用量 ${formatCount(candidate.citations_count)}。` : `按引用量、年份和主题相关性排序；引用量 ${formatCount(candidate.citations_count)}。`,
+    evidence_ids: [candidate.id],
+    graph_signals: { citation_count: candidate.citations_count || 0, is_frontier: hasAwardSignal(candidate) }
+  }));
+  const modeLabel = AI_MODES[mode] || AI_MODES.review;
+  const summary = mode === "gaps"
+    ? `本地检索找到 ${formatCount(resultItems.length)} 篇候选论文；研究空白需要结合摘要和全文进一步核实。`
+    : mode === "frontier"
+      ? `本地检索按近年发表、引用量和图谱位置整理了 ${formatCount(resultItems.length)} 篇候选论文。`
+      : `本地检索围绕“${query}”整理了 ${formatCount(resultItems.length)} 篇候选论文，可继续用 AI 生成结构化综述。`;
+  return {
+    interpreted_query: {
+      main_question: query,
+      expanded_terms: [...new Set(terms)].slice(0, 12),
+      sub_questions: mode === "review" ? ["研究主题如何演化？", "常用方法和数据集有哪些？", "哪些方向值得继续关注？"] : [modeLabel, "哪些论文构成主要证据？"]
+    },
+    answer: {
+      summary,
+      key_points: [
+        `当前模式：${modeLabel}`,
+        years.length ? `候选年份覆盖 ${years[0]}–${years[years.length - 1]}。` : "当前筛选没有足够的年份信息。",
+        "本地回退只使用论文元数据，不会生成库外论文或虚构摘要。"
+      ],
+      caveats: ["摘要和语义向量尚未完全补齐，结论需要打开证据论文核实。"]
+    },
+    results: resultItems,
+    facets: {
+      years: years.map((year) => ({ value: year, count: selected.filter((candidate) => candidate.year === year).length })),
+      topics: [...topicCounts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 8).map(([value, count]) => ({ value, count })),
+      venues: [...venueCounts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 8).map(([value, count]) => ({ value, count }))
+    },
+    view: {
+      timeline: years.map((year) => ({ year, ids: selected.filter((candidate) => candidate.year === year).map((candidate) => candidate.id) })),
+      comparison_columns: ["研究方法", "数据集", "指标", "优点", "局限"],
+      gaps: mode === "gaps" ? ["摘要字段仍在补全，方法与数据集缺口需要进一步核实。", "建议沿引用薄弱区域查看 1–3 跳邻域。"] : []
+    }
+  };
 }
 
 function renderAiResults() {
   const status = $("aiSearchStatus");
   const results = $("aiSearchResults");
+  const interpretation = $("aiQueryInterpretation");
   if (!state.aiResults.length) {
     results.hidden = true;
     results.innerHTML = "";
+    interpretation.hidden = true;
+    interpretation.innerHTML = "";
+    updateWorkspaceControls();
     return;
   }
+  const payload = state.aiPayload || {};
+  const interpreted = payload.interpreted_query || {};
+  interpretation.hidden = false;
+  interpretation.innerHTML = `<strong>AI 对问题的理解</strong><span>${escapeHtml(interpreted.main_question || $("aiSearchInput").value)}</span><small>扩展词：${escapeHtml((interpreted.expanded_terms || []).join("、") || "暂无")}</small>`;
   results.hidden = false;
-  const answer = state.aiAnswer ? `<p class="ai-search-answer">${escapeHtml(state.aiAnswer)}</p>` : "";
-  const items = state.aiResults.slice(0, 6).map((result) => `
-    <button type="button" class="ai-result" data-ai-result="${escapeHtml(result.id)}">
-      <span class="ai-result-title">${escapeHtml(result.title || "未命名论文")}</span>
-      <span class="ai-result-meta">${escapeHtml([result.year, result.venue, result.reason].filter(Boolean).join(" · "))}</span>
-    </button>`).join("");
-  results.innerHTML = `${answer}<div class="ai-result-list">${items}</div>`;
-  results.querySelectorAll(".ai-result").forEach((item) => item.addEventListener("click", () => {
-    const id = item.dataset.aiResult;
-    if (!id) return;
-    selectNode(id);
-    const node = state.data.nodes.find((candidate) => candidate.id === id);
-    if (node) $("aiSearchStatus").textContent = `已定位：${node.title}`;
+  const answer = payload.answer || {};
+  const keyPoints = Array.isArray(answer.key_points) ? answer.key_points : [];
+  const caveats = Array.isArray(answer.caveats) ? answer.caveats : [];
+  const answerBlock = `<div class="ai-answer-block"><p class="ai-search-answer">${escapeHtml(answer.summary || state.aiAnswer || "")}</p>${keyPoints.length ? `<ul>${keyPoints.slice(0, 4).map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>` : ""}${caveats.length ? `<p class="ai-caveat">${escapeHtml(caveats[0])}</p>` : ""}</div>`;
+  const items = state.aiResults.slice(0, 12).map((result) => {
+    const id = String(result.id || "");
+    const checked = workspaceHas("compare", id) ? " checked" : "";
+    const graph = result.graph_signals || {};
+    return `<article class="ai-result" data-ai-result="${escapeHtml(id)}">
+      <div class="ai-result-main"><label class="ai-compare-check"><input type="checkbox" data-compare-id="${escapeHtml(id)}"${checked} /><span></span></label><button type="button" class="ai-result-open" data-ai-open="${escapeHtml(id)}"><span class="ai-result-title">${escapeHtml(result.title || "未命名论文")}</span><span class="ai-result-meta">${escapeHtml([result.year, result.venue, `引用 ${formatCount(graph.citation_count ?? result.citations_count ?? 0)}`, result.reason].filter(Boolean).join(" · "))}</span></button></div>
+      <div class="ai-result-actions"><button type="button" data-ai-focus="${escapeHtml(id)}">定位图中</button><button type="button" data-ai-neighborhood="${escapeHtml(id)}">1 跳邻域</button><button type="button" data-ai-favorite="${escapeHtml(id)}">${workspaceHas("favorites", id) ? "已收藏" : "收藏"}</button></div>
+    </article>`;
+  }).join("");
+  const view = payload.view || {};
+  const timeline = Array.isArray(view.timeline) && view.timeline.length ? `<div class="ai-research-view"><strong>时间线</strong><div class="ai-timeline">${view.timeline.slice(0, 8).map((item) => `<span><b>${escapeHtml(item.year)}</b>${formatCount((item.ids || []).length)} 篇</span>`).join("")}</div></div>` : "";
+  const gaps = Array.isArray(view.gaps) && view.gaps.length ? `<div class="ai-research-view"><strong>研究空白提示</strong><ul>${view.gaps.slice(0, 3).map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul></div>` : "";
+  const comparison = state.aiMode === "compare" ? renderComparisonTable() : "";
+  results.innerHTML = `${answerBlock}<div class="ai-result-list">${items}</div>${comparison}${timeline}${gaps}`;
+  results.querySelectorAll("[data-ai-open]").forEach((item) => item.addEventListener("click", () => focusAiResult(item.dataset.aiOpen)));
+  results.querySelectorAll("[data-ai-focus]").forEach((item) => item.addEventListener("click", () => focusAiResult(item.dataset.aiFocus)));
+  results.querySelectorAll("[data-ai-neighborhood]").forEach((item) => item.addEventListener("click", () => focusAiResult(item.dataset.aiNeighborhood, true)));
+  results.querySelectorAll("[data-ai-favorite]").forEach((item) => item.addEventListener("click", () => {
+    toggleWorkspaceId("favorites", item.dataset.aiFavorite);
+    renderAiResults();
   }));
-  if (status && state.aiAnswer) status.textContent = `AI 找到 ${formatCount(state.aiResults.length)} 篇相关论文`;
+  results.querySelectorAll("[data-compare-id]").forEach((item) => item.addEventListener("change", () => {
+    const id = item.dataset.compareId;
+    if (item.checked && state.workspace.compare.length >= 5) { item.checked = false; $("aiSearchStatus").textContent = "对比列表最多保留 5 篇论文。"; return; }
+    if (item.checked !== workspaceHas("compare", id)) toggleWorkspaceId("compare", id);
+    renderAiResults();
+  }));
+  if (status && (state.aiAnswer || answer.summary)) status.textContent = `${AI_MODES[state.aiMode] || "AI 搜索"} · 找到 ${formatCount(state.aiResults.length)} 篇候选论文`;
+  updateWorkspaceControls();
+}
+
+function renderComparisonTable() {
+  const selectedIds = state.workspace.compare?.length ? new Set(state.workspace.compare) : new Set(state.aiResults.slice(0, 5).map((result) => String(result.id)));
+  const rows = state.aiResults.filter((result) => selectedIds.has(String(result.id))).slice(0, 5).map((result) => {
+    const node = state.data.nodes.find((item) => item.id === String(result.id));
+    const topics = (node?.topics || []).slice(0, 2).join("、") || "元数据不足";
+    const abstractState = node?.abstract ? "摘要已补充" : "元数据不足";
+    return `<tr><th>${escapeHtml(shortTitle(node?.title || result.title || "未命名论文"))}</th><td>${escapeHtml(node?.year || result.year || "—")}</td><td>${escapeHtml(topics)}</td><td>${escapeHtml(formatCount(node?.citations_count || result.graph_signals?.citation_count || 0))}</td><td>${escapeHtml(abstractState)}</td></tr>`;
+  }).join("");
+  if (!rows) return "";
+  return `<div class="ai-research-view ai-comparison-view"><strong>方法矩阵（当前元数据）</strong><div class="ai-table-wrap"><table><thead><tr><th>论文</th><th>年份</th><th>主题</th><th>引用</th><th>摘要</th></tr></thead><tbody>${rows}</tbody></table></div><small>方法、数据集和指标字段会在摘要补全后继续丰富；未提供的字段显示为“元数据不足”。</small></div>`;
+}
+
+function focusAiResult(id, neighborhood = false) {
+  if (!id) return;
+  selectNode(String(id));
+  if (neighborhood) { state.neighborhoodId = String(id); applyFilters(); }
+  const node = state.data.nodes.find((candidate) => candidate.id === String(id));
+  if (node) $("aiSearchStatus").textContent = `${neighborhood ? "已展开邻域" : "已定位"}：${node.title}`;
+}
+
+function saveSearchHistory(query, mode, filters) {
+  state.workspace.history = [{ query, mode, filters, at: new Date().toISOString() }, ...(state.workspace.history || [])].slice(0, 20);
+  persistWorkspace();
+}
+
+function updateWorkspaceControls() {
+  const count = state.workspace?.compare?.length || 0;
+  if ($("aiCompareCount")) $("aiCompareCount").textContent = String(count);
+  if ($("aiCompareButton")) $("aiCompareButton").disabled = count < 2;
+  if ($("compareButton") && state.selectedId) $("compareButton").textContent = workspaceHas("compare", state.selectedId) ? "✓ 已加入对比" : "＋ 加入对比";
+}
+
+function downloadText(filename, content, type = "text/plain;charset=utf-8") {
+  const blob = new Blob([content], { type });
+  const link = document.createElement("a");
+  link.href = URL.createObjectURL(blob);
+  link.download = filename;
+  link.click();
+  setTimeout(() => URL.revokeObjectURL(link.href), 1000);
+}
+
+function exportAiResults() {
+  if (!state.aiResults.length) { $("aiSearchStatus").textContent = "请先完成一次 AI 搜索。"; return; }
+  const rows = state.aiResults.map((result) => {
+    const node = state.data.nodes.find((item) => item.id === String(result.id));
+    return { ...result, node };
+  });
+  const csv = ["id,title,year,venue,citations,reason", ...rows.map(({ node, ...result }) => [result.id, node?.title || result.title, node?.year || result.year, node?.venue || result.venue, node?.citations_count || result.citations_count || 0, result.reason || ""].map((value) => `"${String(value ?? "").replace(/"/g, '""')}"`).join(","))].join("\n");
+  downloadText("ai-research-results.csv", `\ufeff${csv}`, "text/csv;charset=utf-8");
 }
 
 async function runAiSearch() {
@@ -429,41 +672,58 @@ async function runAiSearch() {
     if (query.length < 2) $("aiSearchStatus").textContent = "请输入至少 2 个字符。";
     return;
   }
+  syncAiFilters();
+  state.aiMode = $("aiSearchMode").value || "review";
+  const candidates = buildAiCandidates(query, state.aiFilters);
   state.aiBusy = true;
   button.disabled = true;
   button.textContent = "搜索中…";
-  $("aiSearchStatus").textContent = "AI 正在理解问题并匹配引用图谱…";
+  $("aiSearchStatus").textContent = `正在从 ${formatCount(state.data.nodes.length)} 篇论文中筛选候选…`;
   state.aiSearchIds.clear();
   state.aiResults = [];
   state.aiAnswer = "";
+  state.aiPayload = null;
+  state.aiMode = "review";
+  state.aiFilters = { year_from: state.yearMin, year_to: state.yearMax, topics: [], publication_types: [], venues: [], min_citations: 0 };
+  state.aiPayload = null;
   renderAiResults();
   try {
     const response = await fetch("/api/ai-search", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ query, candidates: buildAiCandidates(query) })
+      body: JSON.stringify({ query, mode: state.aiMode, filters: state.aiFilters, limit: 12, candidates })
     });
     const payload = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(payload.error || `AI 搜索失败（${response.status}）`);
     const known = new Set(state.data.nodes.map((node) => node.id));
-    state.aiResults = (payload.results || []).filter((result) => known.has(String(result.id))).slice(0, 8);
+    state.aiPayload = payload;
+    state.aiResults = (payload.results || []).filter((result) => known.has(String(result.id))).slice(0, 12);
     state.aiSearchIds = new Set(state.aiResults.map((result) => String(result.id)));
-    state.aiAnswer = payload.answer || "";
-    if (!state.aiResults.length) {
-      $("aiSearchStatus").textContent = "没有找到足够匹配的论文，可以换一种描述。";
-      renderAiResults();
-      applyFilters();
-      return;
-    }
+    state.aiAnswer = payload.answer?.summary || payload.answer || "";
+    saveSearchHistory(query, state.aiMode, state.aiFilters);
+    if (!state.aiResults.length) throw new Error("没有找到足够匹配的论文，可以换一种描述。");
     $("searchInput").value = "";
     state.search = "";
     renderAiResults();
     applyFilters();
     selectNode(state.aiResults[0].id);
   } catch (error) {
-    $("aiSearchStatus").textContent = error.message || "AI 搜索暂时不可用。";
-    state.aiSearchIds.clear();
-    applyFilters();
+    // OpenAI is optional: the same candidate set remains searchable locally.
+    if (candidates.length) {
+      state.aiPayload = localAiPayload(query, state.aiMode, state.aiFilters, candidates);
+      state.aiResults = state.aiPayload.results.slice(0, 12);
+      state.aiSearchIds = new Set(state.aiResults.map((result) => String(result.id)));
+      state.aiAnswer = state.aiPayload.answer.summary;
+      saveSearchHistory(query, state.aiMode, state.aiFilters);
+      $("aiSearchStatus").textContent = `OpenAI 暂不可用，已使用本地元数据检索（${error.message || "API 未连接"}）。`;
+      renderAiResults();
+      applyFilters();
+      selectNode(state.aiResults[0].id);
+    } else {
+      $("aiSearchStatus").textContent = error.message || "AI 搜索暂时不可用。";
+      state.aiSearchIds.clear();
+      applyFilters();
+    }
   } finally {
     state.aiBusy = false;
     button.disabled = false;
@@ -627,9 +887,14 @@ function renderDetails(node) {
   $("detailTitle").textContent = node.title;
   $("detailVenue").textContent = [node.venue, node.external ? "外部引用节点" : "收录论文"].filter(Boolean).join(" · ");
   $("detailAuthors").textContent = (node.authors || []).join(" · ") || "作者信息待补充";
-  $("detailProvenance").textContent = `来源 · ${node.source || "OpenAlex / arXiv 公共元数据快照"}`;
+  const completeness = node.metadata_completeness ? ` · 元数据完整度 ${Math.round(node.metadata_completeness * 100)}%` : "";
+  $("detailProvenance").textContent = `来源 · ${node.source || "OpenAlex / arXiv 公共元数据快照"}${completeness}`;
   $("detailTags").innerHTML = (node.topics || []).map((topic) => `<span class="detail-tag">${escapeHtml(topic)}</span>`).join("");
-  $("detailAbstract").textContent = node.abstract || "暂无摘要。后续数据同步会补充论文摘要和来源信息。";
+  $("detailAbstract").textContent = node.abstract || "暂无摘要。当前页面不会根据标题猜测摘要，后续公开元数据同步后再补充。";
+  $("favoriteButton").textContent = workspaceHas("favorites", node.id) ? "★ 已收藏" : "☆ 收藏";
+  $("compareButton").textContent = workspaceHas("compare", node.id) ? "✓ 已加入对比" : "＋ 加入对比";
+  $("readButton").textContent = state.workspace.read?.[node.id] ? "✓ 已读" : "标记已读";
+  $("detailNote").value = state.workspace.notes?.[node.id] || "";
   const incoming = state.data.edges.filter((edge) => edge.target === node.id);
   const outgoing = state.data.edges.filter((edge) => edge.source === node.id);
   $("detailReferences").textContent = outgoing.length;
@@ -643,6 +908,7 @@ function renderDetails(node) {
   }).join("");
   $("relatedList").querySelectorAll(".related-item").forEach((item) => item.addEventListener("click", () => selectNode(item.dataset.related)));
   const link = $("detailLink"); link.href = node.url || `https://openalex.org/${encodeURIComponent(node.id)}`;
+  updateWorkspaceControls();
 }
 
 function fitGraph() {
@@ -665,6 +931,13 @@ function resetView() {
   state.aiAnswer = "";
   $("searchInput").value = "";
   $("aiSearchInput").value = "";
+  $("aiSearchMode").value = "review";
+  $("aiYearFrom").value = state.yearMin;
+  $("aiYearTo").value = state.yearMax;
+  $("aiMinCitations").value = "0";
+  $("aiTopicFilter").value = "";
+  $("aiPublicationType").value = "";
+  $("aiVenueFilter").value = "";
   $("aiSearchStatus").textContent = "";
   renderAiResults();
   state.activeTopics.clear();

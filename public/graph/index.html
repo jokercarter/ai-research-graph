@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="theme-color" content="#080c16" />
     <title>AI Research Graph</title>
-    <link rel="stylesheet" href="styles.css?v=24" />
+    <link rel="stylesheet" href="styles.css?v=26" />
     <script src="https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js"></script>
   </head>
   <body>
@@ -116,13 +116,33 @@
               </div>
               <span class="ai-badge">AI</span>
             </div>
-            <p class="ai-search-copy">用自然语言描述研究问题，AI 会从当前引用图谱中找出最相关的论文。</p>
+            <p class="ai-search-copy">用自然语言描述研究问题，先用图谱和元数据筛选候选论文，再由 AI 组织综述、比较、空白和前沿线索。</p>
             <form class="ai-search-form" id="aiSearchForm">
               <input id="aiSearchInput" type="search" placeholder="如：视觉语言模型的对齐方法" autocomplete="off" />
               <button id="aiSearchButton" type="submit">搜索</button>
             </form>
+            <div class="ai-control-grid">
+              <label class="ai-control"><span>研究模式</span><select id="aiSearchMode" class="select-control">
+                <option value="review">梳理文献综述</option>
+                <option value="related">找相关论文</option>
+                <option value="compare">比较研究方法</option>
+                <option value="gaps">寻找研究空白</option>
+                <option value="frontier">寻找研究前沿</option>
+              </select></label>
+              <label class="ai-control"><span>年份</span><span class="ai-year-control"><input id="aiYearFrom" type="number" min="1900" max="2100" value="2016" aria-label="AI 搜索起始年份" /><i>—</i><input id="aiYearTo" type="number" min="1900" max="2100" value="2026" aria-label="AI 搜索结束年份" /></span></label>
+              <label class="ai-control"><span>最低引用</span><input id="aiMinCitations" class="ai-number-control" type="number" min="0" step="1" value="0" /></label>
+              <label class="ai-control"><span>主题过滤</span><input id="aiTopicFilter" class="ai-filter-input" type="search" placeholder="可选，如 computer vision" autocomplete="off" /></label>
+              <label class="ai-control"><span>论文类型</span><select id="aiPublicationType" class="select-control"><option value="">全部类型</option><option value="article">期刊论文</option><option value="conference-paper">会议论文</option><option value="preprint">预印本</option><option value="review">综述</option></select></label>
+              <label class="ai-control"><span>Venue</span><input id="aiVenueFilter" class="ai-filter-input" type="search" placeholder="可选，如 NeurIPS" autocomplete="off" /></label>
+            </div>
+            <div class="ai-interpretation" id="aiQueryInterpretation" hidden></div>
             <p class="ai-search-status" id="aiSearchStatus" role="status" aria-live="polite"></p>
             <div class="ai-search-results" id="aiSearchResults" hidden></div>
+            <div class="ai-workspace-strip">
+              <span><strong id="aiCompareCount">0</strong> 篇待比较</span>
+              <button type="button" class="text-button" id="aiCompareButton" disabled>生成比较表</button>
+              <button type="button" class="text-button" id="aiExportButton">导出检索结果</button>
+            </div>
           </section>
           <div class="graph-panel panel" id="graphPanel">
             <div class="loading-state" id="loadingState" role="status">
@@ -160,6 +180,14 @@
             <div class="detail-authors" id="detailAuthors"></div>
             <p class="detail-provenance" id="detailProvenance"></p>
             <div class="detail-tags" id="detailTags"></div>
+            <div class="detail-actions" aria-label="科研工作区操作">
+              <button type="button" class="detail-action" id="favoriteButton">☆ 收藏</button>
+              <button type="button" class="detail-action" id="compareButton">＋ 加入对比</button>
+              <button type="button" class="detail-action" id="readButton">标记已读</button>
+            </div>
+            <label class="detail-note-label" for="detailNote">个人笔记</label>
+            <textarea class="detail-note" id="detailNote" rows="3" placeholder="记录这篇论文对你的研究有什么帮助…"></textarea>
+            <button type="button" class="detail-note-save" id="saveNoteButton">保存笔记</button>
             <div class="detail-rule"></div>
             <p class="detail-abstract" id="detailAbstract"></p>
             <div class="relation-summary">
@@ -182,6 +210,6 @@
         <div class="footer-note">引用关系来自 OpenAlex 与 CitationCS 的公开快照 · 目标窗口 2016–2026</div>
       </footer>
     </div>
-    <script src="app.js?v=24"></script>
+    <script src="app.js?v=26"></script>
   </body>
 </html>
