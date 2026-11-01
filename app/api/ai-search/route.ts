@@ -1,5 +1,6 @@
 import { env } from "cloudflare:workers";
 import { rateLimited } from "../../../lib/rate-limit";
+import { complete, pickProvider } from "../../../lib/llm";
 
 type Mode = "related" | "review" | "compare" | "gaps" | "frontier";
 
@@ -64,20 +65,6 @@ const MODE_LABELS: Record<Mode, string> = {
 
 function jsonError(message: string, status = 400) {
   return Response.json({ error: message }, { status });
-}
-
-function outputText(payload: unknown) {
-  const record = payload && typeof payload === "object" ? payload as Record<string, unknown> : {};
-  if (typeof record.output_text === "string") return record.output_text;
-  const chunks: string[] = [];
-  for (const item of Array.isArray(record.output) ? record.output : []) {
-    const itemRecord = item && typeof item === "object" ? item as Record<string, unknown> : {};
-    for (const content of Array.isArray(itemRecord.content) ? itemRecord.content : []) {
-      const contentRecord = content && typeof content === "object" ? content as Record<string, unknown> : {};
-      if (typeof contentRecord.text === "string") chunks.push(contentRecord.text);
-    }
-  }
-  return chunks.join("\n");
 }
 
 function parseModelJson(text: string) {
@@ -221,9 +208,9 @@ function modeInstruction(mode: Mode) {
 }
 
 export async function POST(request: Request) {
-  const runtimeEnv = env as typeof env & { OPENAI_API_KEY?: string; OPENAI_RESEARCH_MODEL?: string };
-  const apiKey = String(runtimeEnv.OPENAI_API_KEY || "").trim();
-  if (!apiKey) return jsonError("站点尚未配置 OPENAI_API_KEY。", 503);
+  const runtimeEnv = env as unknown as Record<string, string | undefined>;
+  const provider = pickProvider(runtimeEnv);
+  if (!provider) return jsonError("站点尚未配置模型 API（ANTHROPIC_API_KEY）。", 503);
   if (rateLimited(request, "ai-search", 8, 60_000)) return jsonError("AI 助手请求太频繁，请一分钟后再试。", 429);
 
   let body: { query?: unknown; mode?: unknown; filters?: unknown; candidates?: unknown; limit?: unknown };
@@ -265,30 +252,15 @@ export async function POST(request: Request) {
     JSON.stringify(candidates),
   ].join("\n");
 
-  let upstream: Response;
+  let modelText = "";
   try {
-    upstream = await fetch("https://api.openai.com/v1/responses", {
-      method: "POST",
-      headers: { authorization: `Bearer ${apiKey}`, "content-type": "application/json" },
-      body: JSON.stringify({
-        model: runtimeEnv.OPENAI_RESEARCH_MODEL || "gpt-4.1-mini",
-        instructions: "严格输出合法 JSON。只能引用候选 ID。",
-        input: prompt,
-        max_output_tokens: 1800,
-      }),
-    });
-  } catch {
-    return jsonError("无法连接 OpenAI API，请稍后重试。", 502);
-  }
-
-  const responsePayload = await upstream.json().catch(() => ({}));
-  if (!upstream.ok) {
-    const detail = safeString(responsePayload?.error?.message || "OpenAI API 请求失败", 220);
-    return jsonError(detail, upstream.status === 401 || upstream.status === 403 ? 502 : upstream.status);
+    modelText = await complete(runtimeEnv, provider, "严格输出合法 JSON。只能引用候选 ID。", [{ role: "user", content: prompt }], 1800);
+  } catch (error) {
+    return jsonError(error instanceof Error ? error.message.slice(0, 220) : "模型服务暂不可用，请稍后重试。", 502);
   }
 
   try {
-    const parsed = parseModelJson(outputText(responsePayload));
+    const parsed = parseModelJson(modelText);
     const results = normalizeResults(parsed?.results, allowed, candidates).slice(0, limit);
     const answer = normalizeAnswer(parsed?.answer, allowed);
     if (!answer.evidence_ids.length) answer.evidence_ids = [...new Set(results.flatMap((result) => result.evidence_ids))].slice(0, Math.min(limit, 8));
@@ -304,7 +276,7 @@ export async function POST(request: Request) {
       // cannot introduce a venue, year, or topic that was not retrieved.
       facets: buildFacets(candidates),
       view: normalizeView(parsed?.view, allowed),
-      source: "openai",
+      source: provider,
     });
   } catch {
     return jsonError("AI 返回了无法识别的结果，请换一种描述再试。", 502);
