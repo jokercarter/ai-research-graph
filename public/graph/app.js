@@ -73,8 +73,7 @@ function normalizeData(raw) {
   return { nodes, edges };
 }
 
-async function fetchSnapshot() {
-  const response = await fetch("data.sample.json.gz", { cache: "no-store" });
+async function decodeSnapshotResponse(response) {
   if (!response.ok) throw new Error(`HTTP ${response.status}`);
   const bytes = new Uint8Array(await response.arrayBuffer());
   let text = new TextDecoder().decode(bytes);
@@ -86,6 +85,25 @@ async function fetchSnapshot() {
     text = await new Response(stream).text();
   }
   return JSON.parse(text);
+}
+
+async function fetchSnapshot() {
+  // The hosted source repository has a 32 MiB per-file limit.  Prefer the
+  // two-part release and keep the single-file path as a backwards-compatible
+  // fallback for local fixtures and older deployments.
+  const partResponses = await Promise.all([
+    fetch("data.sample.part1.json.gz", { cache: "no-store" }),
+    fetch("data.sample.part2.json.gz", { cache: "no-store" })
+  ]);
+  if (partResponses.every((response) => response.ok)) {
+    const parts = await Promise.all(partResponses.map(decodeSnapshotResponse));
+    return {
+      ...parts[0],
+      nodes: parts.flatMap((part) => part.nodes || []),
+      edges: parts.flatMap((part) => part.edges || [])
+    };
+  }
+  return decodeSnapshotResponse(await fetch("data.sample.json.gz", { cache: "no-store" }));
 }
 
 async function loadData() {
