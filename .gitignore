@@ -43,3 +43,13 @@ yarn-error.log*
 
 # OS metadata
 .DS_Store
+
+# Monthly pipeline working data (raw harvests, models, intermediate files; regenerated locally)
+/data/work/
+/public/research/data.previous/
+/public/research/data.building/
+__pycache__/
+
+# Local publishing helpers
+/发布到GitHub.bat
+/scripts/publish-github.ps1
