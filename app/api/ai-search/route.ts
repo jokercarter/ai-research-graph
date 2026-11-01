@@ -1,4 +1,5 @@
 import { env } from "cloudflare:workers";
+import { rateLimited } from "../../../lib/rate-limit";
 
 type Mode = "related" | "review" | "compare" | "gaps" | "frontier";
 
@@ -223,6 +224,7 @@ export async function POST(request: Request) {
   const runtimeEnv = env as typeof env & { OPENAI_API_KEY?: string; OPENAI_RESEARCH_MODEL?: string };
   const apiKey = String(runtimeEnv.OPENAI_API_KEY || "").trim();
   if (!apiKey) return jsonError("站点尚未配置 OPENAI_API_KEY。", 503);
+  if (rateLimited(request, "ai-search", 8, 60_000)) return jsonError("AI 助手请求太频繁，请一分钟后再试。", 429);
 
   let body: { query?: unknown; mode?: unknown; filters?: unknown; candidates?: unknown; limit?: unknown };
   try {

@@ -2,7 +2,7 @@ export default function Home() {
   return (
     <main className="site-frame">
       <iframe
-        src="/graph/index.html?v=26"
+        src="/research/index.html?v=1"
         title="AI Research Graph"
         allow="fullscreen"
       />

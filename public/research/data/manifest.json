@@ -1,0 +1,57 @@
+{
+ "version": "2026-10-31",
+ "built_at": "2026-11-01T18:58:38Z",
+ "papers": 276668,
+ "window": [
+  "2024-11-01",
+  "2026-10-31"
+ ],
+ "new_papers": 17836,
+ "new_month": "2026-10",
+ "lite_per": 400,
+ "detail_per": 200,
+ "term_shards": 2048,
+ "key_shards": 128,
+ "year0": 2000,
+ "categories": [
+  "cs.CL",
+  "cs.CV",
+  "cs.LG",
+  "cs.AI",
+  "cs.RO",
+  "cs.IR",
+  "cs.CR",
+  "cs.HC",
+  "cs.MA",
+  "cs.NE",
+  "stat.ML",
+  "cs.SD",
+  "eess.AS",
+  "eess.IV",
+  "other"
+ ],
+ "category_names": {
+  "cs.CL": "自然语言处理",
+  "cs.CV": "计算机视觉",
+  "cs.LG": "机器学习",
+  "cs.AI": "人工智能",
+  "cs.RO": "机器人",
+  "cs.IR": "信息检索与推荐",
+  "cs.CR": "安全与隐私",
+  "cs.HC": "人机交互",
+  "cs.MA": "多智能体",
+  "cs.NE": "神经与进化计算",
+  "stat.ML": "统计机器学习",
+  "cs.SD": "声音处理",
+  "eess.AS": "语音与音频",
+  "eess.IV": "图像与视频处理",
+  "other": "其他"
+ },
+ "sources": [
+  {
+   "name": "arXiv",
+   "use": "论文元数据与摘要（OAI-PMH）",
+   "url": "https://arxiv.org"
+  }
+ ]
+}
