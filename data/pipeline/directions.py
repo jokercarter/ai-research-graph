@@ -49,8 +49,14 @@ paper's yet often even still thus within without via""".split())
 
 
 def load_docs():
+    """Only the fields this script uses, so 500k papers fit in a few GB of memory."""
+    import gc
     with open(TMP / "docs.pkl", "rb") as fh:
-        return pickle.load(fh)
+        docs = pickle.load(fh)
+    for i, r in enumerate(docs):
+        docs[i] = {"arxiv_id": r["arxiv_id"], "title": r["title"], "abstract": r["abstract"], "created": r["created"], "categories": r["categories"][:1]}
+    gc.collect()
+    return docs
 
 
 # ---------------------------------------------------------------- vector cache (keyed by arXiv id)

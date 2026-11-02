@@ -4,12 +4,14 @@
   python data/pipeline/monthly_update.py
 
 1. Harvests arXiv records added or updated since the last run (OAI-PMH, no key needed).
-2. Rebuilds the site data for the most recent 24 months into public/research/data.
+2. Rebuilds the site data for the most recent 60 months (~500k papers) into public/research/data
+   (AIRG_MONTHS changes the window).
 3. Research directions: embeds only the new papers' abstracts (GPU if available,
    see embed_gpu.py), assigns every paper to its directions and recomputes trends.
    The directions themselves stay fixed; run `directions.py build --refit` to redo them.
 Takes roughly 10-20 minutes depending on the network.
 """
+import os
 import subprocess
 import sys
 from datetime import date, timedelta
@@ -26,8 +28,11 @@ def run(*args):
 def main():
     today = date.today()
     end = today.replace(day=1) - timedelta(days=1)          # last day of the previous month
-    start = date(end.year - 2, end.month, 1) + timedelta(days=31)
-    start = start.replace(day=1)                             # 24 full months
+    months = int(os.environ.get("AIRG_MONTHS", "60"))      # full months in the window
+    y, m = end.year, end.month - months + 1
+    while m < 1:
+        y, m = y - 1, m + 12
+    start = date(y, m, 1)
     run("harvest_arxiv.py", "--until", today.isoformat())
     run("build_simple.py", "all", "--start", start.isoformat(), "--end", end.isoformat())
     run("directions.py", "export")

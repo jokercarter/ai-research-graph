@@ -2,7 +2,7 @@
 
 面向科研人员的 **AI / 计算机科学论文搜索网站**：快速找到某个方向的关键论文和最新进展，从一篇论文出发找到相关工作，并用 Claude 基于检索到的论文回答研究问题。
 
-- 收录 **276,668 篇** 2024-11 至 2026-10 在 arXiv 首次发布的 AI 相关论文（全部带摘要），**每月更新一次**
+- 收录 **501,905 篇** 2021-12 至 2026-10 在 arXiv 首次发布的 AI 相关论文（全部带摘要，约 5 年），**每月更新一次**
 - 网站是纯静态页面 + 分片数据：访问者只下载用到的小文件（一次搜索约 1–3 MB），手机也能用
 - AI 功能只使用 **Claude**：本地可用 Claude 账号（邮箱）登录，用包月订阅；公开部署可用 API key
 
@@ -128,7 +128,7 @@ data\work\venv-gpu\Scripts\python.exe data\pipeline\monthly_update.py
 它会：
 
 1. 通过 arXiv OAI-PMH **增量**拉取上次运行之后新增或更新的论文（状态保存在 `data/work/`）
-2. 重建最近 **24 个完整月**的网站数据到 `public/research/data`（文档、检索索引、清单）
+2. 重建最近 **60 个完整月**（约 50 万篇）的网站数据到 `public/research/data`（文档、检索索引、清单）；环境变量 `AIRG_MONTHS` 可调整
 3. 只给新论文计算语义向量（GPU），归入已有的研究方向，重新计算升温趋势
 
 通常 10–20 分钟。之后照常提交并部署。首次在一台新电脑上运行时会从 2016-11 开始全量拉取，耗时较长（约 2–3 小时）。
@@ -137,7 +137,7 @@ data\work\venv-gpu\Scripts\python.exe data\pipeline\monthly_update.py
 
 ```bash
 python data/pipeline/harvest_arxiv.py --until 2026-11-30
-python data/pipeline/build_simple.py all --start 2024-12-01 --end 2026-11-30
+python data/pipeline/build_simple.py all --start 2021-12-01 --end 2026-11-30
 # 或单独运行某个阶段：docs | cards | index | shards | trends1 | trends2
 ```
 
@@ -163,9 +163,9 @@ python data/pipeline/build_simple.py all --start 2024-12-01 --end 2026-11-30
 | `k/XX.json.gz` | arXiv 编号 → 本快照中的论文编号（保证链接在每月更新后仍有效） |
 | `trends.json.gz` | 150 个研究方向：名称、说明、关键词、每月论文数、升温指标、代表论文 |
 | `dir.bin.gz` | 每篇论文 3 字节：所属的研究方向编号（255 表示无） |
-| `v/NNN.bin.gz` | 语义向量：按主研究方向分片，每篇论文的摘要向量降到 256 维（PCA）并存为 int8，约 58 MB |
+| `v/NNN.bin.gz` | 语义向量：按主研究方向分片，每篇论文的摘要向量降到 256 维（PCA）并存为 int8，约 104 MB |
 | `v/centroids.bin.gz`、`v/pca.bin.gz` | 150 个方向的中心向量；768→256 维的投影矩阵（查询向量用同一投影） |
-| `vocab.txt.gz` | 约 3.1 万个常用词及文档数，用于拼写纠正 |
+| `vocab.txt.gz` | 约 4 万个常用词及文档数，用于拼写纠正 |
 
 论文按 arXiv 主分类分组、组内按时间倒序编号，因此"领域最新"页面直接读取连续的编号区间。
 
@@ -278,7 +278,7 @@ AI Research Graph/
 
 - **被引数和引用关系**：论文页暂不显示，可通过 Semantic Scholar 链接查看。`s2_enrich.py` 已能批量获取，但全量拉取较慢
 - **引用关系**：相关论文已基于摘要语义，尚未加入共被引和文献耦合
-- **收录范围**：只有近两年的 arXiv 论文；未上传 arXiv 的会议 / 期刊论文不在库中
+- **收录范围**：只有近 5 年的 arXiv 论文；未上传 arXiv 的会议 / 期刊论文不在库中
 - 搜索页的"AI 研究助手"在本地预览中不可用（请用 AI 问答）
 - 账号与跨设备同步、邮件订阅提醒
 
