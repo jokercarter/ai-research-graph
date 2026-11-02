@@ -57,6 +57,8 @@ function fnv1a(s) {
   for (const b of new TextEncoder().encode(s)) { h ^= b; h = Math.imul(h, 0x01000193) >>> 0; }
   return h >>> 0;
 }
+// arXiv papers are keyed by their arXiv id; conference/journal-only papers by "s2-<Semantic Scholar id>".
+const isArxivKey = (k) => /^\d{4}\.\d{4,5}$/.test(k || "");
 const hasCJK = (s) => /[㐀-鿿]/.test(s || "");
 
 // Chinese research terms -> English search terms (used when the AI rewrite is unavailable).
@@ -152,12 +154,14 @@ const Core = {
   year(m, sid) { return m[sid * 4] + this.manifest.year0; },
   ym(m, sid) { return (m[sid * 4] + this.manifest.year0) * 100 + m[sid * 4 + 1]; },
   cat(m, sid) { return m[sid * 4 + 2]; },
-  isNew(m, sid) { return m[sid * 4 + 3] === 1; },
+  isNew(m, sid) { return (m[sid * 4 + 3] & 1) === 1; },
+  // Published at a top conference / journal (venue-only papers and arXiv papers with a venue).
+  hasVenue(m, sid) { return (m[sid * 4 + 3] & 2) === 2; },
   async lite(sid) {
     const per = this.manifest.lite_per;
     const block = await load(`l/${String(Math.floor(sid / per)).padStart(4, "0")}.json.gz`);
     const r = block[sid % per];
-    return { sid, title: r[0], date: r[1], year: Number(r[1].slice(0, 4)), cat: r[2], authors: r[3], snippet: r[4], key: r[5],
+    return { sid, title: r[0], date: r[1], year: Number(r[1].slice(0, 4)), cat: r[2], authors: r[3], snippet: r[4], key: r[5], venue: r[6] || "", isArxiv: isArxivKey(r[5]),
       isNew: r[1].slice(0, 7) === this.manifest.new_month };
   },
   async detail(sid) {
@@ -194,7 +198,7 @@ const Core = {
     for (let i = 0; i < n; i++) { if (m[i * 4 + 2] === catIdx) { if (lo < 0) lo = i; hi = i; } else if (lo >= 0) break; }
     return lo < 0 ? [0, 0] : [lo, hi + 1];
   },
-  async search(english, { yearFrom = 0, yearTo = 9999, cat = null, dir = null, sort = "relevance", exclude = -1, limit = 400 } = {}) {
+  async search(english, { yearFrom = 0, yearTo = 9999, cat = null, dir = null, pub = false, sort = "relevance", exclude = -1, limit = 400 } = {}) {
     const uni = tokens(english);
     const uniq = [...new Set(uni)];
     const bis = [...new Set(uni.slice(1).map((w, i) => `${uni[i]} ${w}`))];
@@ -222,6 +226,7 @@ const Core = {
       if (y < yearFrom || y > yearTo) continue;
       if (cat !== null && this.cat(meta, sid) !== cat) continue;
       if (dir !== null && !this.dirsOf(dirs, sid).includes(dir)) continue;
+      if (pub && !this.hasVenue(meta, sid)) continue;
       const cover = nUni ? (matched.get(sid) || 0) / nUni : 1;
       hits.push({ sid, score: s * (0.3 + 0.7 * cover * cover), ym: this.ym(meta, sid), cat: this.cat(meta, sid), dir: dirs ? dirs[sid * 3] : 255 });
     }
@@ -359,7 +364,7 @@ Object.assign(Core, {
     vecs.forEach((v, i) => { const w = 1 / (1 + i * 0.3); for (let j = 0; j < v.length; j++) out[j] += v[j] * w; });
     return out;
   },
-  async semantic(qv, { yearFrom = 0, yearTo = 9999, cat = null, dir = null, exclude = -1, probe = 8, limit = 300, dirs: only = null } = {}) {
+  async semantic(qv, { yearFrom = 0, yearTo = 9999, cat = null, dir = null, pub = false, exclude = -1, probe = 8, limit = 300, dirs: only = null } = {}) {
     const C = await this.vecCentroids();
     if (!C || !qv) return [];
     let norm = 0; for (const x of qv) norm += x * x; norm = Math.sqrt(norm) || 1;
@@ -389,6 +394,7 @@ Object.assign(Core, {
       if (y < yearFrom || y > yearTo) continue;
       if (cat !== null && this.cat(meta, sid) !== cat) continue;
       if (dir !== null && !this.dirsOf(dirs, sid).includes(dir)) continue;
+      if (pub && !this.hasVenue(meta, sid)) continue;
       hits.push({ sid, sim: s, ym: this.ym(meta, sid), cat: this.cat(meta, sid), dir: dirs ? dirs[sid * 3] : 255 });
       if (hits.length >= limit) break;
     }
@@ -428,4 +434,4 @@ Object.assign(Core, {
 
 window.Core = Core;
 window.Workspace = Workspace;
-window.CoreUtil = { tokens, fnv1a, hasCJK, localRewrite };
+window.CoreUtil = { tokens, fnv1a, hasCJK, localRewrite, isArxivKey };

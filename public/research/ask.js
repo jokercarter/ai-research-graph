@@ -152,7 +152,7 @@ function turnHtml(t, i) {
       ${fu.length ? `<div class="chips" style="margin-top:10px">${fu.map((f) => `<button class="chip acc" data-follow="${esc(f)}">${esc(f)}</button>`).join("")}</div>` : ""}</div>
     ${t.sources?.length ? `<details class="srcs" ${i === Ask.turns.length - 1 ? "open" : ""}><summary>参考的 ${t.sources.length} 篇论文（前 ${Math.min(8, t.sources.length)} 篇读了摘要）${t.queries?.length ? ` · 检索词：${esc(t.queries.join(" / "))}` : ""}</summary>
       ${t.sources.map((s) => `<div class="mini"><div><span class="reason">[${s.n}]</span><a href="${paperHref(s.key)}">${esc(s.title)}</a></div>
-        <span class="m">${esc(s.date)} <button class="linkbtn ${Workspace.state.saved[s.key] ? "on" : ""}" data-save="${esc(s.key)}" data-title="${esc(s.title)}" data-year="${esc(String(s.date).slice(0, 4))}">${Workspace.state.saved[s.key] ? "★" : "☆"}</button></span></div>`).join("")}
+        <span class="m">${esc(s.date)} <button class="linkbtn ${Workspace.state.saved[s.key] ? "on" : ""}" data-save="${esc(s.key)}" data-title="${esc(s.title)}" data-year="${esc((String(s.date).match(/\d{4}/) || [""])[0])}">${Workspace.state.saved[s.key] ? "★" : "☆"}</button></span></div>`).join("")}
       <div class="row-actions" style="margin-top:8px"><button class="btn small" data-saveall="${i}">全部收藏</button></div></details>` : ""}
     ${t.provider && t.answer ? `<div class="note" style="color:var(--faint);font-size:12px">由 ${esc(t.provider)} 根据检索到的论文摘要生成，请以原文为准${t.usage ? ` · 本次约 ${fmt(t.usage.input)} 输入 + ${fmt(t.usage.output)} 输出 tokens` : ""}</div>` : ""}
   </div>`;
@@ -169,7 +169,7 @@ function renderThread() {
   bindSave(box);
   box.querySelectorAll("[data-reconnect]").forEach((b) => (b.onclick = openConnect));
   box.querySelectorAll("[data-saveall]").forEach((b) => (b.onclick = () => {
-    Ask.turns[Number(b.dataset.saveall)].sources.forEach((s) => { if (!Workspace.state.saved[s.key]) Workspace.toggleSaved(s.key, { title: s.title, year: Number(String(s.date).slice(0, 4)) }); });
+    Ask.turns[Number(b.dataset.saveall)].sources.forEach((s) => { if (!Workspace.state.saved[s.key]) Workspace.toggleSaved(s.key, { title: s.title, year: Number((String(s.date).match(/\d{4}/) || [0])[0]) }); });
     updateBadge(); renderThread(); toast("已收藏全部参考论文");
   }));
 }
@@ -235,8 +235,8 @@ async function retrieve(question, queries, pinnedKey, onStatus) {
   const terms = [...new Set(queries.flatMap((q) => CoreUtil.tokens(q)))];
   const details = await Promise.all(picked.map((c, i) => (i < N_KEY ? Core.detail(c.sid) : Core.lite(c.sid))));
   const sources = details.map((d, i) => i < N_KEY
-    ? { n: i + 1, key: d.ax, title: d.t, date: d.d, authors: d.au.slice(0, 3).join(", ") + (d.na > 3 ? " et al." : ""), abstract: excerpt(d.ab, terms), cat: d.cat[0] }
-    : { n: i + 1, key: d.key, title: d.title, date: d.date, authors: d.authors, abstract: "", cat: d.cat });
+    ? { n: i + 1, key: d.ax, title: d.t, venue: d.vn, date: d.vn ? `${d.vn}, ${d.d}` : d.d, authors: d.au.slice(0, 3).join(", ") + (d.na > 3 ? " et al." : ""), abstract: excerpt(d.ab, terms), cat: d.cat[0] }
+    : { n: i + 1, key: d.key, title: d.title, venue: d.venue, date: d.venue ? `${d.venue}, ${d.date}` : d.date, authors: d.authors, abstract: "", cat: d.cat });
   const dirInfo = chosen.map((d) => T.byId.get(d)).filter(Boolean);
   const years = {}; for (const [sid] of pool) { const y = Core.year(Core.meta, sid); years[y] = (years[y] || 0) + 1; }
   const overview = `searched all ${Core.manifest.papers} papers; the question falls in these research directions: ` + dirInfo.map((t) =>
