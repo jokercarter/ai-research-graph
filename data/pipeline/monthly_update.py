@@ -3,7 +3,8 @@
 
   python data/pipeline/monthly_update.py
 
-1. Harvests arXiv records added or updated since the last run (OAI-PMH, no key needed).
+1. Harvests arXiv records added or updated since the last run (OAI-PMH, no key needed),
+   and papers of 38 top AI/CS conferences and journals from Semantic Scholar (fetch_venues.py).
 2. Rebuilds the site data for the most recent 60 months (~500k papers) into public/research/data
    (AIRG_MONTHS changes the window).
 3. Research directions: embeds only the new papers' abstracts (GPU if available,
@@ -34,6 +35,8 @@ def main():
         y, m = y - 1, m + 12
     start = date(y, m, 1)
     run("harvest_arxiv.py", "--until", today.isoformat())
+    # Conference / journal papers (incl. ones not on arXiv): refetch the current and previous year.
+    run("fetch_venues.py", "--years", f"{end.year - 1}-{end.year}", "--refresh")
     run("build_simple.py", "all", "--start", start.isoformat(), "--end", end.isoformat())
     run("directions.py", "export")
     run("embed_gpu.py")

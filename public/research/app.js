@@ -31,10 +31,10 @@ function resultItem(l, hit) {
   return `<article class="result"><h3><a href="${paperHref(l.key)}">${esc(l.title)}</a></h3>
     <div class="byline">${esc(l.authors)} · ${esc(l.date)} · ${esc(Core.catName(l.cat))}</div>
     <div class="snippet">${esc(l.snippet)}</div>
-    <div class="row-actions">${l.isNew ? '<span class="chip new">本月新增</span>' : ""}${hit?.semOnly ? '<span class="chip sem" title="摘要的意思与搜索内容相近，但不一定包含相同的词">语义相关</span>' : ""}
+    <div class="row-actions">${l.venue ? `<span class="chip venue">${esc(l.venue)}</span>` : ""}${l.isNew ? '<span class="chip new">本月新增</span>' : ""}${hit?.semOnly ? '<span class="chip sem" title="摘要的意思与搜索内容相近，但不一定包含相同的词">语义相关</span>' : ""}
       <button class="linkbtn ${saved ? "on" : ""}" data-save="${esc(l.key)}" data-title="${esc(l.title)}" data-year="${l.year}">${saved ? "★ 已收藏" : "☆ 收藏"}</button>
       <a class="linkbtn" href="${paperHref(l.key)}">详情与相关论文 →</a>
-      <a class="linkbtn" href="https://arxiv.org/pdf/${esc(l.key)}" target="_blank" rel="noopener">PDF</a></div></article>`;
+      ${l.isArxiv ? `<a class="linkbtn" href="https://arxiv.org/pdf/${esc(l.key)}" target="_blank" rel="noopener">PDF</a>` : `<a class="linkbtn" href="https://www.semanticscholar.org/paper/${esc(l.key.slice(3))}" target="_blank" rel="noopener">原文</a>`}</div></article>`;
 }
 function bindSave(root) {
   root.querySelectorAll("[data-save]").forEach((b) => (b.onclick = () => {
@@ -61,7 +61,7 @@ async function viewHome() {
   $view.innerHTML = `
   <section class="hero">
     <h1>找到一个 AI 方向的关键论文与最新进展</h1>
-    <p>收录 ${fmt(m.papers)} 篇近 5 年的 arXiv AI 论文（${esc(m.window[0])} 至 ${esc(m.window[1])}），每月更新；${esc(m.new_month)} 新增 ${fmt(m.new_papers)} 篇</p>
+    <p>收录 ${fmt(m.papers)} 篇近 5 年的 AI 论文（${esc(m.window[0])} 至 ${esc(m.window[1])}，arXiv + 顶会/顶刊${m.with_venue ? `，其中 ${fmt(m.with_venue)} 篇已发表于顶会/顶刊` : ""}），每月更新；${esc(m.new_month)} 新增 ${fmt(m.new_papers)} 篇</p>
     <form class="bigsearch" id="heroSearch"><input id="heroQuery" type="search" placeholder="输入论文标题、方法名或研究问题（支持中文）" autofocus><button class="btn primary">搜索</button></form>
     <div class="examples">试试：${examples.map((e) => `<a href="#/search?q=${encodeURIComponent(e)}">${esc(e)}</a>`).join("")}</div>
   </section>
@@ -77,12 +77,13 @@ async function viewHome() {
 function parseQuery(hash) {
   const qs = new URLSearchParams(hash.split("?")[1] || "");
   return { q: qs.get("q") || "", y0: Number(qs.get("y0")) || 0, y1: Number(qs.get("y1")) || 0, cat: qs.has("cat") ? Number(qs.get("cat")) : null, dir: qs.has("dir") ? Number(qs.get("dir")) : null,
-    sort: qs.get("sort") || "relevance", page: Math.max(1, Number(qs.get("page")) || 1) };
+    pub: qs.get("pub") === "1", sort: qs.get("sort") || "relevance", page: Math.max(1, Number(qs.get("page")) || 1) };
 }
 function searchHref(p) {
   const qs = new URLSearchParams(); qs.set("q", p.q);
   if (p.y0) qs.set("y0", p.y0); if (p.y1) qs.set("y1", p.y1); if (p.cat !== null && p.cat !== undefined) qs.set("cat", p.cat);
   if (p.dir !== null && p.dir !== undefined) qs.set("dir", p.dir);
+  if (p.pub) qs.set("pub", "1");
   if (p.sort !== "relevance") qs.set("sort", p.sort); if (p.page > 1) qs.set("page", p.page);
   return `#/search?${qs}`;
 }
@@ -96,7 +97,7 @@ async function viewSearch(hash, token) {
   Workspace.addHistory(p.q);
   $view.innerHTML = `<div class="loading">正在检索…</div>`;
   const rw = await Core.rewrite(p.q);
-  const [res, T] = await Promise.all([Core.fuzzySearch(rw.english, { yearFrom: p.y0 || 0, yearTo: p.y1 || 9999, cat: p.cat, dir: p.dir, sort: p.sort }), Core.getTrends()]);
+  const [res, T] = await Promise.all([Core.fuzzySearch(rw.english, { yearFrom: p.y0 || 0, yearTo: p.y1 || 9999, cat: p.cat, dir: p.dir, pub: p.pub, sort: p.sort }), Core.getTrends()]);
   if (token !== routeToken) return;
   const per = 20; const pageHits = res.hits.slice((p.page - 1) * per, p.page * per);
   const lites = await Promise.all(pageHits.map((h) => Core.lite(h.sid)));
@@ -112,6 +113,7 @@ async function viewSearch(hash, token) {
   <div class="layout">
     <aside class="side">
       <div><h3>排序</h3><select id="fSort"><option value="relevance">相关度</option><option value="recent">最新发表</option></select></div>
+      <div><h3>来源</h3><label><input type="checkbox" id="fPub" ${p.pub ? "checked" : ""}> 只看已发表于顶会 / 顶刊</label></div>
       <div><h3>年份</h3><div class="yearrow"><select id="fY0">${yopt(p.y0)}</select>–<select id="fY1">${yopt(p.y1)}</select></div></div>
       ${dirList.length ? `<div><h3>研究方向</h3>
         <label><input type="radio" name="dir" value="" ${p.dir === null ? "checked" : ""}> 全部</label>
@@ -135,6 +137,7 @@ async function viewSearch(hash, token) {
   document.getElementById("fSort").value = p.sort;
   const apply = (patch) => { location.hash = searchHref({ ...p, page: 1, ...patch }); };
   document.getElementById("fSort").onchange = (e) => apply({ sort: e.target.value });
+  document.getElementById("fPub").onchange = (e) => apply({ pub: e.target.checked });
   document.getElementById("fY0").onchange = (e) => apply({ y0: Number(e.target.value) });
   document.getElementById("fY1").onchange = (e) => apply({ y1: Number(e.target.value) });
   document.querySelectorAll("input[name=cat]").forEach((r) => (r.onchange = () => apply({ cat: r.value === "" ? null : Number(r.value) })));
@@ -180,11 +183,14 @@ async function viewPaper(key, token) {
   setNav("");
   $view.innerHTML = `<div class="loading">正在加载论文…</div>`;
   const sid = await Core.sidOfKey(key);
-  if (sid === null) { $view.innerHTML = `<div class="error">当前快照里没有这篇论文（${esc(key)}）。<a href="https://arxiv.org/abs/${esc(key)}" target="_blank" rel="noopener">在 arXiv 上查看</a></div>`; return; }
+  if (sid === null) { $view.innerHTML = `<div class="error">当前快照里没有这篇论文（${esc(key)}）。${CoreUtil.isArxivKey(key) ? `<a href="https://arxiv.org/abs/${esc(key)}" target="_blank" rel="noopener">在 arXiv 上查看</a>` : ""}</div>`; return; }
   const [d, dirs, T] = await Promise.all([Core.detail(sid), Core.getDirs(), Core.getTrends()]);
   if (token !== routeToken) return;
   const myDirs = Core.dirsOf(dirs, sid).map((id) => T.byId.get(id)).filter(Boolean);
   const saved = !!Workspace.state.saved[d.ax];
+  const onArxiv = CoreUtil.isArxivKey(d.ax);
+  const s2 = onArxiv ? `https://www.semanticscholar.org/arxiv/${d.ax}` : `https://www.semanticscholar.org/paper/${d.ax.slice(3)}`;
+  const pdf = onArxiv ? `https://arxiv.org/pdf/${d.ax}` : d.url;
   document.title = `${d.t} · AI Research Graph`;
   $view.innerHTML = `
   <div class="paper-grid">
@@ -192,42 +198,43 @@ async function viewPaper(key, token) {
       <div class="paper-head"><h1>${esc(d.t)}</h1>
         <div class="byline">${esc(d.au.join(", "))}${d.na > d.au.length ? ` 等 ${d.na} 人` : ""}</div>
         ${myDirs.length ? `<div class="chips" style="margin-top:8px"><span class="conn-desc">研究方向：</span>${myDirs.map((t) => `<a class="chip acc" href="${trendHref(t.id)}">${esc(dirName(t))}</a>`).join("")}</div>` : ""}
-        <div class="chips" style="margin-top:8px">${d.cat.map((c) => `<span class="chip">${esc(Core.catName(c))}</span>`).join("")}${d.d.slice(0, 7) === Core.manifest.new_month ? '<span class="chip new">本月新增</span>' : ""}</div></div>
+        <div class="chips" style="margin-top:8px">${d.vn ? `<span class="chip venue">${esc(d.vn)}</span>` : ""}${d.cat.map((c) => `<span class="chip">${esc(Core.catName(c))}</span>`).join("")}${d.d.slice(0, 7) === Core.manifest.new_month ? '<span class="chip new">本月新增</span>' : ""}</div></div>
       <div class="row-actions" style="margin:14px 0">
         <button class="btn ${saved ? "on" : ""}" id="bSave">${saved ? "★ 已收藏" : "☆ 收藏"}</button>
         <button class="btn" id="bBib">复制 BibTeX</button>
-        <a class="btn" href="https://arxiv.org/pdf/${esc(d.ax)}" target="_blank" rel="noopener">打开 PDF</a>
+        ${pdf ? `<a class="btn" href="${esc(pdf)}" target="_blank" rel="noopener">${onArxiv || /\.pdf|download/i.test(pdf) ? "打开 PDF" : "查看原文"}</a>` : ""}
         <a class="btn primary" href="#/ask?paper=${encodeURIComponent(d.ax)}">问 AI 关于这篇论文</a></div>
       <h2>摘要</h2><div class="abstract">${esc(d.ab)}</div>
       <h2 style="margin-top:26px">相关论文</h2><p class="note" style="color:var(--muted);font-size:13px">按标题和摘要关键词在库内检索出的最接近的论文。</p>
       <div id="rel"><div class="loading">正在查找相关论文…</div></div>
     </div>
     <aside class="card">
-      <div class="kv"><span>首次发布</span><b>${esc(d.d)}</b>${d.u && d.u !== d.d ? `<span>最近更新</span><b>${esc(d.u)}</b>` : ""}
-        <span>arXiv</span><b>${esc(d.ax)}</b>${d.jr ? `<span>发表于</span><b>${esc(d.jr)}</b>` : ""}${d.doi ? `<span>DOI</span><b style="word-break:break-all">${esc(d.doi)}</b>` : ""}
+      <div class="kv"><span>${onArxiv ? "首次发布" : "发表日期"}</span><b>${esc(d.d)}</b>${d.u && d.u !== d.d ? `<span>最近更新</span><b>${esc(d.u)}</b>` : ""}
+        ${onArxiv ? `<span>arXiv</span><b>${esc(d.ax)}</b>` : ""}${d.vn ? `<span>发表于</span><b>${esc(d.vn)}</b>` : d.jr ? `<span>发表于</span><b>${esc(d.jr)}</b>` : ""}${d.doi ? `<span>DOI</span><b style="word-break:break-all">${esc(d.doi)}</b>` : ""}
         ${d.cm ? `<span>备注</span><b>${esc(d.cm)}</b>` : ""}</div>
       <h3 style="margin-top:14px">外部链接</h3><div class="chips">
-        <a class="chip acc" href="https://arxiv.org/abs/${esc(d.ax)}" target="_blank" rel="noopener">arXiv</a>
-        <a class="chip acc" href="https://www.semanticscholar.org/arxiv/${esc(d.ax)}" target="_blank" rel="noopener">Semantic Scholar（引用）</a>
+        ${onArxiv ? `<a class="chip acc" href="https://arxiv.org/abs/${esc(d.ax)}" target="_blank" rel="noopener">arXiv</a>` : ""}
+        <a class="chip acc" href="${esc(s2)}" target="_blank" rel="noopener">Semantic Scholar（引用）</a>
         <a class="chip acc" href="https://scholar.google.com/scholar?q=${encodeURIComponent(d.t)}" target="_blank" rel="noopener">Google Scholar</a>
         ${d.doi ? `<a class="chip acc" href="https://doi.org/${esc(d.doi)}" target="_blank" rel="noopener">DOI</a>` : ""}</div>
     </aside>
   </div>`;
   document.getElementById("bSave").onclick = (e) => { const on = Workspace.toggleSaved(d.ax, { title: d.t, year: Number(d.d.slice(0, 4)), au: d.au.slice(0, 8), ax: d.ax, doi: d.doi }); e.target.classList.toggle("on", on); e.target.textContent = on ? "★ 已收藏" : "☆ 收藏"; updateBadge(); };
-  document.getElementById("bBib").onclick = () => { navigator.clipboard?.writeText(bibtex({ title: d.t, year: d.d.slice(0, 4), au: d.au, ax: d.ax, doi: d.doi })); toast("BibTeX 已复制"); };
+  document.getElementById("bBib").onclick = () => { navigator.clipboard?.writeText(bibtex({ title: d.t, year: d.d.slice(0, 4), au: d.au, ax: onArxiv ? d.ax : "", doi: d.doi, venue: d.vn })); toast("BibTeX 已复制"); };
   // Related papers: closest abstracts in meaning (falls back to shared title/abstract words).
   const relHits = await Core.similar(sid, `${d.t} ${d.t} ${d.ab.slice(0, 400)}`, 10);
   if (token !== routeToken) return;
   const rel = await Promise.all(relHits.slice(0, 10).map((h) => Core.lite(h.sid)));
   if (token !== routeToken) return;
-  document.getElementById("rel").innerHTML = rel.length ? rel.map((l) => `<div class="mini"><a href="${paperHref(l.key)}">${esc(l.title)}</a><span class="m">${esc(l.date)} · ${esc(Core.catName(l.cat))}</span></div>`).join("") : '<div class="empty">没有找到相关论文</div>';
+  document.getElementById("rel").innerHTML = rel.length ? rel.map((l) => `<div class="mini"><a href="${paperHref(l.key)}">${esc(l.title)}</a><span class="m">${l.venue ? esc(l.venue) + " · " : ""}${esc(l.date)} · ${esc(Core.catName(l.cat))}</span></div>`).join("") : '<div class="empty">没有找到相关论文</div>';
 }
 function bibtex(p) {
   const first = (p.au?.[0] || "anon").split(" ").pop().toLowerCase().replace(/[^a-z]/g, "");
   const word = (p.title || "").toLowerCase().match(/[a-z]{4,}/)?.[0] || "paper";
   const lines = [`  title = {${p.title}}`, p.au?.length ? `  author = {${p.au.join(" and ")}}` : null, p.year ? `  year = {${p.year}}` : null,
+    p.venue ? `  booktitle = {${p.venue.replace(/ \d{4}$/, "")}}` : null,
     p.ax ? `  eprint = {${p.ax}},\n  archivePrefix = {arXiv}` : null, p.doi ? `  doi = {${p.doi}}` : null].filter(Boolean);
-  return `@misc{${first}${p.year || ""}${word},\n${lines.join(",\n")}\n}`;
+  return `@${p.venue ? "inproceedings" : "misc"}{${first}${p.year || ""}${word},\n${lines.join(",\n")}\n}`;
 }
 
 // ---------------------------------------------------------------------------- trends
@@ -298,9 +305,9 @@ function viewAbout() {
   setNav("about");
   const m = Core.manifest;
   $view.innerHTML = `<div class="prose"><h1>数据说明</h1>
-  <p>当前快照：<b>${esc(m.version)}</b>，每月更新一次。收录 ${esc(m.window[0])} 至 ${esc(m.window[1])} 在 arXiv 首次发布、主分类或交叉分类属于 AI 相关方向（cs.AI、cs.LG、cs.CL、cs.CV、cs.RO、cs.IR、cs.MA、cs.NE、stat.ML 等）的论文，共 ${fmt(m.papers)} 篇。</p>
-  <h2>这是简化版</h2><ul><li>只收录近 5 年（2021-12 起）的 arXiv 论文；没有上传 arXiv 的会议/期刊论文不在库里。</li><li>暂不显示被引数和引用关系，可以通过论文页的 Semantic Scholar 链接查看。</li>
-    <li>"相关论文"按标题和摘要关键词检索得出，还没有使用语义向量和引用关系。</li><li>"研究方向"由论文标题和摘要的语义向量（bge-base 模型）聚类得到，每篇论文按内容相似度归入 1–3 个方向；"升温"指该方向近 3 个月的论文占比相对之前一年上升，反映关注度变化，不代表质量判断。</li></ul>
+  <p>当前快照：<b>${esc(m.version)}</b>，每月更新一次。收录 ${esc(m.window[0])} 至 ${esc(m.window[1])} 在 arXiv 首次发布、主分类或交叉分类属于 AI 相关方向（cs.AI、cs.LG、cs.CL、cs.CV、cs.RO、cs.IR、cs.MA、cs.NE、stat.ML 等）的论文，以及同期发表在 AI/CS 顶会、顶刊（NeurIPS、ICML、ICLR、CVPR、ICCV、ECCV、ACL、EMNLP、NAACL、AAAI、IJCAI、KDD、SIGIR、WWW、ICRA、IROS、CHI、CCS、TPAMI、IJCV、JMLR、TACL 等 38 个）上的论文，共 ${fmt(m.papers)} 篇${m.venue_only ? `，其中 ${fmt(m.venue_only)} 篇只发表在会议/期刊、不在 arXiv 上` : ""}。同一篇论文只收录一次：会议/期刊版本与 arXiv 版本按 arXiv 编号、DOI 或标题匹配后合并，arXiv 论文会标注发表的会议。</p>
+  <h2>这是简化版</h2><ul><li>只收录近 5 年（2021-12 起）的论文；列表之外的会议、期刊暂未收录；Semantic Scholar 没有摘要的会议论文（约 1.4 万篇）暂不收录。</li><li>暂不显示被引数和引用关系，可以通过论文页的 Semantic Scholar 链接查看。</li>
+    <li>"相关论文"按摘要的语义相似度得出，还没有使用引用关系。</li><li>"研究方向"由论文标题和摘要的语义向量（bge-base 模型）聚类得到，每篇论文按内容相似度归入 1–3 个方向；"升温"指该方向近 3 个月的论文占比相对之前一年上升，反映关注度变化，不代表质量判断。</li></ul>
   <h2>数据来源</h2><ul>${m.sources.map((s) => `<li><a href="${esc(s.url)}" target="_blank" rel="noopener">${esc(s.name)}</a>：${esc(s.use)}</li>`).join("")}</ul>
   <h2>隐私</h2><p>搜索在你的浏览器里完成；只有使用 AI 研究助手或中文检索时，问题和候选论文的标题、摘要片段会经服务器发送给 AI 模型。收藏和关注只保存在本地浏览器。</p></div>`;
 }

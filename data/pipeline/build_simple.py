@@ -53,6 +53,61 @@ def load_docs():
         return pickle.load(fh)
 
 
+VENUES = Path(os.environ.get("AIRG_VENUES") or (WORK / "venues"))
+
+
+def norm_title(t: str) -> str:
+    return re.sub(r"[^a-z0-9]", "", (t or "").lower())
+
+
+def merge_venues(best: dict, lo: str, hi: str) -> tuple[int, int]:
+    """Add conference / journal papers from fetch_venues.py without duplicates.
+
+    A venue paper that is already in the index (same arXiv id, DOI or normalised title) is not
+    added; the arXiv paper gets its venue instead ("CVPR 2023"). Papers without an abstract are
+    skipped. Venue-only papers are keyed "s2-<Semantic Scholar id>"."""
+    files = sorted(glob.glob(str(VENUES / "venue_*.jsonl.gz")))
+    if not files:
+        return 0, 0
+    by_doi = {r["doi"]: k for k, r in best.items() if r.get("doi")}
+    by_title = {norm_title(r["title"]): k for k, r in best.items()}
+    seen, marked, added = set(), 0, 0
+    for path in files:
+        with gzip.open(path, "rt", encoding="utf-8") as fh:
+            for line in fh:
+                p = json.loads(line)
+                date = p.get("publicationDate") or f"{p['_year']}-{p['_month']:02d}-01"
+                if not (lo <= date[:7] <= hi) or p["paperId"] in seen:
+                    continue
+                seen.add(p["paperId"])
+                ext = p.get("externalIds") or {}
+                nt = norm_title(p["title"])
+                hit = ext.get("ArXiv") if ext.get("ArXiv") in best else None
+                hit = hit or by_doi.get((ext.get("DOI") or "").lower()) or by_title.get(nt)
+                label = f"{p['_venue']} {p['_year']}"
+                if hit:
+                    if not best[hit].get("venue"):
+                        best[hit]["venue"] = label; marked += 1
+                    continue
+                ab = (p.get("abstract") or "").strip()
+                if len(ab) < 100:
+                    continue
+                key = "s2-" + p["paperId"]
+                authors = [x.get("name") for x in p.get("authors") or [] if x.get("name")]
+                best[key] = {
+                    "arxiv_id": key, "title": re.sub(r"\s+", " ", p["title"]).strip(), "abstract": re.sub(r"\s+", " ", ab),
+                    "authors": authors[:25], "n_authors": len(authors), "categories": [p["_cat"]],
+                    "created": date[:10], "updated": "", "comments": "", "journal_ref": "",
+                    "doi": (ext.get("DOI") or "").lower(), "venue": label,
+                    "url": (p.get("openAccessPdf") or {}).get("url") or (f"https://doi.org/{ext['DOI']}" if ext.get("DOI") else f"https://www.semanticscholar.org/paper/{p['paperId']}"),
+                }
+                by_title[nt] = key
+                if ext.get("DOI"):
+                    by_doi[ext["DOI"].lower()] = key
+                added += 1
+    return marked, added
+
+
 def phase_docs(a):
     best = {}
     lo, hi = a.start[:7], a.end[:7]
@@ -72,6 +127,8 @@ def phase_docs(a):
                 old = best.get(r["arxiv_id"])
                 if old is None or (r.get("updated") or "") >= (old.get("updated") or ""):
                     best[r["arxiv_id"]] = r
+    n_arxiv = len(best)
+    marked, added = merge_venues(best, lo, hi)
     def cat_idx(r):
         p = r["categories"][0]
         return CATS.index(p) if p in CATS else len(CATS) - 1
@@ -80,7 +137,7 @@ def phase_docs(a):
     TMP.mkdir(parents=True, exist_ok=True)
     with open(TMP / "docs.pkl", "wb") as fh:
         pickle.dump(docs, fh, protocol=pickle.HIGHEST_PROTOCOL)
-    print(f"docs: {len(docs)} papers created {a.start}..{a.end}")
+    print(f"docs: {len(docs)} papers created {a.start}..{a.end} ({n_arxiv} arXiv, {added} venue-only; {marked} arXiv papers marked with their venue)")
 
 
 def phase_cards(a):
@@ -91,7 +148,7 @@ def phase_cards(a):
     for i, r in enumerate(docs):
         y, m = int(r["created"][:4]), int(r["created"][5:7])
         p = r["categories"][0]
-        meta[i] = (y - YEAR0, m, CATS.index(p) if p in CATS else len(CATS) - 1, 1 if r["created"][:7] == snap_month else 0)
+        meta[i] = (y - YEAR0, m, CATS.index(p) if p in CATS else len(CATS) - 1, (1 if r["created"][:7] == snap_month else 0) | (2 if r.get("venue") else 0))
         keys[fnv1a(r["arxiv_id"]) % KEY_SHARDS][r["arxiv_id"]] = i
     OUT.mkdir(parents=True, exist_ok=True)
     with gzip.open(OUT / "meta.bin.gz", "wb") as fh:
@@ -104,12 +161,13 @@ def phase_cards(a):
             au = r["authors"]; n = r.get("n_authors") or len(au)
             ab = r["abstract"]
             block.append([r["title"], r["created"], r["categories"][0], ", ".join(au[:3]) + (" 等" if n > 3 else ""),
-                          ab[:230] + ("…" if len(ab) > 230 else ""), r["arxiv_id"]])
+                          ab[:230] + ("…" if len(ab) > 230 else ""), r["arxiv_id"], r.get("venue") or ""])
         wjson(OUT / "l" / f"{start // LITE_PER:04d}.json.gz", block)
     for start in range(0, N, DETAIL_PER):
         block = [{"t": r["title"], "au": r["authors"][:15], "na": r.get("n_authors") or len(r["authors"]), "d": r["created"],
                   "u": r.get("updated") or "", "cat": r["categories"][:6], "ab": r["abstract"], "cm": r.get("comments") or "",
-                  "jr": r.get("journal_ref") or "", "doi": r.get("doi") or "", "ax": r["arxiv_id"]} for r in docs[start:start + DETAIL_PER]]
+                  "jr": r.get("journal_ref") or "", "doi": r.get("doi") or "", "ax": r["arxiv_id"],
+                  "vn": r.get("venue") or "", "url": r.get("url") or ""} for r in docs[start:start + DETAIL_PER]]
         wjson(OUT / "p" / f"{start // DETAIL_PER:04d}.json.gz", block)
     print(f"cards: {N} papers, {math.ceil(N / LITE_PER)} result shards, {math.ceil(N / DETAIL_PER)} detail shards")
 
@@ -311,7 +369,10 @@ def phase_trends2(a):
                 "window": [a.start, a.end], "new_papers": int(month_docs[last]), "new_month": months_label(last),
                 "lite_per": LITE_PER, "detail_per": DETAIL_PER, "term_shards": TERM_SHARDS, "key_shards": KEY_SHARDS,
                 "year0": YEAR0, "categories": CATS, "category_names": CAT_ZH,
-                "sources": [{"name": "arXiv", "use": "论文元数据与摘要（OAI-PMH）", "url": "https://arxiv.org"}]}
+                "venue_only": sum(1 for r in docs if not re.match(r"^\d{4}\.\d{4,5}$", r["arxiv_id"])),
+                "with_venue": sum(1 for r in docs if r.get("venue")),
+                "sources": [{"name": "arXiv", "use": "论文元数据与摘要（OAI-PMH）", "url": "https://arxiv.org"},
+                            {"name": "Semantic Scholar", "use": "顶会 / 顶刊论文列表与摘要（含未上传 arXiv 的论文）", "url": "https://www.semanticscholar.org"}]}
     (OUT / "manifest.json").write_text(json.dumps(manifest, ensure_ascii=False, indent=1), encoding="utf-8")
     print(f"trends2: {len(trends)} rising phrases; manifest written")
     for t in trends[:25]:

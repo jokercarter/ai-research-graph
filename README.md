@@ -2,7 +2,10 @@
 
 面向科研人员的 **AI / 计算机科学论文搜索网站**：快速找到某个方向的关键论文和最新进展，从一篇论文出发找到相关工作，并用 Claude 基于检索到的论文回答研究问题。
 
-- 收录 **501,905 篇** 2021-12 至 2026-10 在 arXiv 首次发布的 AI 相关论文（全部带摘要，约 5 年），**每月更新一次**
+- 收录 **552,140 篇** 2021-12 至 2026-10 的 AI 相关论文（全部带摘要，约 5 年），**每月更新一次**：
+  - 501,905 篇 arXiv 论文
+  - 50,235 篇只发表在顶会 / 顶刊、不在 arXiv 上的论文（38 个会议与期刊，见下文）
+  - 去重：会议 / 期刊版本按 arXiv 编号、DOI 或标题与 arXiv 论文匹配，同一篇只收录一次；95,554 篇 arXiv 论文标注了发表的会议（如「CVPR 2023」），搜索页可以「只看已发表于顶会 / 顶刊」
 - 网站是纯静态页面 + 分片数据：访问者只下载用到的小文件（一次搜索约 1–3 MB），手机也能用
 - AI 功能只使用 **Claude**：本地可用 Claude 账号（邮箱）登录，用包月订阅；公开部署可用 API key
 
@@ -127,7 +130,7 @@ data\work\venv-gpu\Scripts\python.exe data\pipeline\monthly_update.py
 
 它会：
 
-1. 通过 arXiv OAI-PMH **增量**拉取上次运行之后新增或更新的论文（状态保存在 `data/work/`）
+1. 通过 arXiv OAI-PMH **增量**拉取上次运行之后新增或更新的论文（状态保存在 `data/work/`）；通过 Semantic Scholar 重新拉取今年和去年的顶会 / 顶刊论文（`fetch_venues.py`，保存在 `data/work/venues/`）
 2. 重建最近 **60 个完整月**（约 50 万篇）的网站数据到 `public/research/data`（文档、检索索引、清单）；环境变量 `AIRG_MONTHS` 可调整
 3. 只给新论文计算语义向量（GPU），归入已有的研究方向，重新计算升温趋势
 
@@ -150,6 +153,20 @@ python data/pipeline/build_simple.py all --start 2021-12-01 --end 2026-11-30
 - **来源**：arXiv OAI-PMH（`set=cs`），保留主分类或交叉分类属于 cs.AI、cs.LG、cs.CL、cs.CV、cs.RO、cs.IR、cs.MA、cs.NE、stat.ML 等 AI 相关方向的论文
 - **发布时间**：按 arXiv 编号中的年月判断首次发布月份（OAI 的 `created` 字段对应最新版本，不能用来判断首发）；同一论文多个版本只保留最新元数据
 - **收录窗口**：最近 24 个完整月
+
+### 顶会 / 顶刊论文
+
+`data/pipeline/fetch_venues.py` 用 Semantic Scholar 的批量检索接口（无需 key）按会议 / 期刊和年份拉取论文列表与摘要，收录范围：
+
+- 机器学习：NeurIPS、ICML、ICLR、AISTATS、UAI、COLT、JMLR、TNNLS
+- 人工智能：AAAI、IJCAI、Artificial Intelligence
+- 视觉与多媒体：CVPR、ICCV、ECCV、WACV、ACM MM、TPAMI、IJCV、TIP
+- 自然语言处理：ACL、EMNLP、NAACL、Findings、TACL
+- 数据挖掘与检索：KDD、SIGIR、WWW、TKDE
+- 机器人：ICRA、IROS、RSS、CoRL、T-RO
+- 人机交互与安全：CHI、CCS、USENIX Security、IEEE S&P、NDSS
+
+合并规则（`build_simple.py` 的 `merge_venues`）：与 arXiv 论文按 arXiv 编号 → DOI → 规范化标题依次匹配，命中则只给 arXiv 论文标注会议名，不重复收录；不在 arXiv 上且有摘要的论文以 `s2-<Semantic Scholar ID>` 为编号加入，分类按会议领域（如 CVPR → 计算机视觉）。没有摘要的论文（约 1.4 万篇）暂不收录。
 
 ### 网站数据文件（`public/research/data`）
 
