@@ -22,7 +22,7 @@ export async function GET() {
   return Response.json({ providers: providers.map((p) => ({ id: p, model: modelName(e, p), label: p === "anthropic" ? "Claude" : "OpenAI" })), default: pickProvider(e) });
 }
 
-const PLAN_SYSTEM = `You help researchers search an index of AI/CS arXiv papers (2024-11 to 2026-10). The index matches English words in titles and abstracts.
+const PLAN_SYSTEM = `You help researchers search an index of AI/CS arXiv papers (about 500k, 2021-12 to now, updated monthly). The index matches English words in titles and abstracts.
 Given the conversation and the latest question, output strict JSON only:
 {"queries": ["<2-4 English keyword queries, 3-8 words each, using the technical terms papers would use; cover different angles of the question>"], "language": "zh" | "en"}`;
 

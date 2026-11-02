@@ -31,7 +31,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from textutil import STOP, bigrams, fnv1a, tokens  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[2]
-WORK = ROOT / "data" / "work"
+WORK = Path(os.environ.get("AIRG_WORK") or (ROOT / "data" / "work"))
 TMP = Path(os.environ.get("AIRG_TMP") or (Path.home() / "airg_work"))
 OUT = Path(os.environ.get("AIRG_OUT") or (ROOT / "public" / "research" / "data"))
 LITE_PER, DETAIL_PER, TERM_SHARDS, KEY_SHARDS, POSTING_CAP, YEAR0 = 400, 200, 2048, 128, 1500, 2000
@@ -115,13 +115,16 @@ def phase_cards(a):
 
 
 def phase_index(a):
+    import gc
     docs = load_docs(); N = len(docs)
+    docs = [(r["title"], r["abstract"]) for r in docs]  # keep only the text: the full records do not fit in a small machine's memory
+    gc.collect()
     vocab: dict[str, int] = {}
     T, D, F = [], [], []
     lens = np.zeros(N, dtype=np.float32)
     bt, bd, bf = [], [], []
     for i, r in enumerate(docs):
-        tt = tokens(r["title"]); ta = tokens(r["abstract"])
+        tt = tokens(r[0]); ta = tokens(r[1])
         tf = Counter()
         for w in tt: tf[w] += 3.0
         for w in ta: tf[w] += 1.0
@@ -135,17 +138,22 @@ def phase_index(a):
         if len(bt) > 4_000_000:
             T.append(np.array(bt, np.int32)); D.append(np.array(bd, np.int32)); F.append(np.array(bf, np.float32)); bt, bd, bf = [], [], []
     T.append(np.array(bt, np.int32)); D.append(np.array(bd, np.int32)); F.append(np.array(bf, np.float32))
+    del docs; gc.collect()
     T = np.concatenate(T); D = np.concatenate(D); F = np.concatenate(F)
     df = np.bincount(T, minlength=len(vocab)).astype(np.float32)
     k1, b = 1.2, 0.75
-    norm = k1 * (1 - b + b * lens / float(lens.mean()))
-    idf = np.log(1 + (N - df + 0.5) / (df + 0.5))
-    S = idf[T] * F * (k1 + 1) / (F + norm[D])
+    norm = (k1 * (1 - b + b * lens / float(lens.mean()))).astype(np.float32)
+    idf = np.log(1 + (N - df + 0.5) / (df + 0.5)).astype(np.float32)
+    S = np.empty(len(T), dtype=np.float32)
+    for s0 in range(0, len(T), 5_000_000):  # in chunks to limit memory
+        sl = slice(s0, s0 + 5_000_000)
+        S[sl] = idf[T[sl]] * F[sl] * (k1 + 1) / (F[sl] + norm[D[sl]])
+    del F; gc.collect()
     words = np.empty(len(vocab), dtype=object)
     for w, j in vocab.items():
         words[j] = w
     keep = df[T] >= 2
-    np.savez(TMP / "postings.npz", T=T[keep], D=D[keep], S=S[keep].astype(np.float32), df=df.astype(np.int32))
+    np.savez(TMP / "postings.npz", T=T[keep], D=D[keep], S=S[keep], df=df.astype(np.int32))
     with open(TMP / "words.pkl", "wb") as fh:
         pickle.dump(list(words), fh, protocol=pickle.HIGHEST_PROTOCOL)
     print(f"index: {len(vocab)} terms, {int(keep.sum())} postings")

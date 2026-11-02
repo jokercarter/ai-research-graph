@@ -21,7 +21,7 @@ function monthChart(monthly) {
   if (!monthly?.length) return "";
   const W = 900, H = 170, pad = 26; const max = Math.max(...monthly.map((m) => m[1]), 1); const bw = (W - pad * 2) / monthly.length;
   const bars = monthly.map(([m, v], i) => `<rect x="${pad + i * bw + 1}" y="${H - pad - (v / max) * (H - pad * 2)}" width="${Math.max(1, bw - 2)}" height="${(v / max) * (H - pad * 2)}" fill="#9db4ec"><title>${m}: ${v} 篇</title></rect>`).join("");
-  const labels = monthly.map(([m], i) => (i % 4 === 0 ? `<text x="${pad + i * bw}" y="${H - 8}">${m}</text>` : "")).join("");
+  const labels = monthly.map(([m], i) => (i % (monthly.length > 36 ? 6 : 4) === 0 ? `<text x="${pad + i * bw}" y="${H - 8}">${m}</text>` : "")).join("");
   return `<svg class="chart" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">${bars}${labels}<text x="${pad}" y="16">${max}</text></svg>`;
 }
 
@@ -61,7 +61,7 @@ async function viewHome() {
   $view.innerHTML = `
   <section class="hero">
     <h1>找到一个 AI 方向的关键论文与最新进展</h1>
-    <p>收录 ${fmt(m.papers)} 篇近两年的 arXiv AI 论文（${esc(m.window[0])} 至 ${esc(m.window[1])}），每月更新；${esc(m.new_month)} 新增 ${fmt(m.new_papers)} 篇</p>
+    <p>收录 ${fmt(m.papers)} 篇近 5 年的 arXiv AI 论文（${esc(m.window[0])} 至 ${esc(m.window[1])}），每月更新；${esc(m.new_month)} 新增 ${fmt(m.new_papers)} 篇</p>
     <form class="bigsearch" id="heroSearch"><input id="heroQuery" type="search" placeholder="输入论文标题、方法名或研究问题（支持中文）" autofocus><button class="btn primary">搜索</button></form>
     <div class="examples">试试：${examples.map((e) => `<a href="#/search?q=${encodeURIComponent(e)}">${esc(e)}</a>`).join("")}</div>
   </section>
@@ -106,7 +106,7 @@ async function viewSearch(hash, token) {
   const dirList = [...dirCount].sort((x, y) => y[1] - x[1]).slice(0, 8);
   if (p.dir !== null && !dirCount.has(p.dir)) dirList.unshift([p.dir, 0]);
   const cats = Core.manifest.categories;
-  const years = [2024, 2025, 2026];
+  const years = []; for (let y = Number(Core.manifest.window[0].slice(0, 4)); y <= Number(Core.manifest.window[1].slice(0, 4)); y++) years.push(y);
   const yopt = (sel) => `<option value="0">不限</option>` + years.map((y) => `<option ${y === sel ? "selected" : ""}>${y}</option>`).join("");
   $view.innerHTML = `
   <div class="layout">
@@ -268,7 +268,7 @@ async function viewTrend(id) {
     <a class="btn" href="#/ask?q=${encodeURIComponent(`${dirName(t)}方向最近有哪些主要进展和代表性方法？`)}">问 AI 这个方向的进展</a></div>
   <div class="metric-row"><div class="metric"><b>${fmt(t.recent)}</b><span>近 3 个月论文</span></div>
     <div class="metric"><b>${fmt(t.base)}</b><span>之前一年</span></div><div class="metric"><b>${growthLabel(t)}</b><span>论文占比变化</span></div>
-    <div class="metric"><b>${fmt(t.size)}</b><span>近两年总计</span></div></div>
+    <div class="metric"><b>${fmt(t.size)}</b><span>收录期内总计</span></div></div>
   <h3 style="margin-top:14px">每月论文数</h3>${monthChart(t.monthly)}
   <div class="cols" style="margin-top:20px">
     <section><h2>最新论文</h2><p class="conn-desc">近 3 个月内容上最贴近这个方向的论文</p>${list(t.latest)}</section>
@@ -299,7 +299,7 @@ function viewAbout() {
   const m = Core.manifest;
   $view.innerHTML = `<div class="prose"><h1>数据说明</h1>
   <p>当前快照：<b>${esc(m.version)}</b>，每月更新一次。收录 ${esc(m.window[0])} 至 ${esc(m.window[1])} 在 arXiv 首次发布、主分类或交叉分类属于 AI 相关方向（cs.AI、cs.LG、cs.CL、cs.CV、cs.RO、cs.IR、cs.MA、cs.NE、stat.ML 等）的论文，共 ${fmt(m.papers)} 篇。</p>
-  <h2>这是简化版</h2><ul><li>只收录近两年的 arXiv 论文；没有上传 arXiv 的会议/期刊论文不在库里。</li><li>暂不显示被引数和引用关系，可以通过论文页的 Semantic Scholar 链接查看。</li>
+  <h2>这是简化版</h2><ul><li>只收录近 5 年（2021-12 起）的 arXiv 论文；没有上传 arXiv 的会议/期刊论文不在库里。</li><li>暂不显示被引数和引用关系，可以通过论文页的 Semantic Scholar 链接查看。</li>
     <li>"相关论文"按标题和摘要关键词检索得出，还没有使用语义向量和引用关系。</li><li>"研究方向"由论文标题和摘要的语义向量（bge-base 模型）聚类得到，每篇论文按内容相似度归入 1–3 个方向；"升温"指该方向近 3 个月的论文占比相对之前一年上升，反映关注度变化，不代表质量判断。</li></ul>
   <h2>数据来源</h2><ul>${m.sources.map((s) => `<li><a href="${esc(s.url)}" target="_blank" rel="noopener">${esc(s.name)}</a>：${esc(s.use)}</li>`).join("")}</ul>
   <h2>隐私</h2><p>搜索在你的浏览器里完成；只有使用 AI 研究助手或中文检索时，问题和候选论文的标题、摘要片段会经服务器发送给 AI 模型。收藏和关注只保存在本地浏览器。</p></div>`;
