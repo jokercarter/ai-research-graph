@@ -1,12 +1,12 @@
 {
  "version": "2026-10-31",
- "built_at": "2026-11-02T00:47:24Z",
- "papers": 501905,
+ "built_at": "2026-11-05T01:00:02Z",
+ "papers": 552140,
  "window": [
   "2021-12-01",
   "2026-10-31"
  ],
- "new_papers": 17836,
+ "new_papers": 17975,
  "new_month": "2026-10",
  "lite_per": 400,
  "detail_per": 200,
@@ -52,7 +52,14 @@
    "name": "arXiv",
    "use": "论文元数据与摘要（OAI-PMH）",
    "url": "https://arxiv.org"
+  },
+  {
+   "name": "Semantic Scholar",
+   "use": "顶会 / 顶刊论文列表与摘要（含未上传 arXiv 的论文）",
+   "url": "https://www.semanticscholar.org"
   }
  ],
+ "venue_only": 50235,
+ "with_venue": 145789,
  "directions": 150
 }

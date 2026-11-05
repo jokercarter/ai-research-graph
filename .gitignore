@@ -47,6 +47,8 @@ yarn-error.log*
 # Monthly pipeline working data (raw harvests, models, intermediate files; regenerated locally)
 /data/work/
 /public/research/data.previous/
+/public/research/data.previous-*/
+/public/research/*.tar
 /public/research/data.building/
 __pycache__/
 

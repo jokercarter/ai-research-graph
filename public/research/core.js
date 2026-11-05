@@ -20,7 +20,7 @@ async function gunzipJSON(res) {
 function load(path, kind = "json") {
   if (cache.has(path)) return cache.get(path);
   const p = (async () => {
-    const res = await fetch(DATA + path + (path.endsWith(".gz") ? "" : "") + `?v=${encodeURIComponent(Core.version || "")}`);
+    const res = await fetch(DATA + path + (path.endsWith(".gz") ? "" : "") + `?v=${encodeURIComponent((Core.version || "") + "-" + (Core.manifest?.built_at || ""))}`);
     if (!res.ok) throw new Error(`加载失败：${path} (${res.status})`);
     if (!path.endsWith(".gz")) return kind === "json" ? res.json() : res.arrayBuffer();
     const buf = await gunzipJSON(res);
@@ -145,6 +145,17 @@ const Core = {
     }
     return this.dirs;
   },
+  // Every paper of one research direction (any of its 1-3 directions), newest first or closest to the direction's centre first.
+  async dirPapers(dir) {
+    const [dirs, meta] = await Promise.all([this.getDirs(), this.getMeta()]);
+    if (!dirs) return [];
+    const out = [];
+    for (let sid = 0, n = dirs.length / 3; sid < n; sid++) {
+      const o = sid * 3;
+      if (dirs[o] === dir || dirs[o + 1] === dir || dirs[o + 2] === dir) out.push({ sid, ym: this.ym(meta, sid), main: dirs[o] === dir });
+    }
+    return out;
+  },
   dirsOf(dirs, sid) { if (!dirs) return []; const out = []; for (let j = 0; j < 3; j++) { const v = dirs[sid * 3 + j]; if (v !== 255) out.push(v); } return out; },
   async getMeta() {
     if (!this.meta) this.meta = new Uint8Array(await load("meta.bin.gz", "bin"));
@@ -176,18 +187,23 @@ const Core = {
   },
   async rewrite(query) {
     if (!hasCJK(query)) return { english: query, via: "none" };
+    // Translations are cached in this browser, so a repeated Chinese search costs nothing.
+    const RW_KEY = "airg.rewrite.v1";
+    let rwCache = {}; try { rwCache = JSON.parse(localStorage.getItem(RW_KEY) || "{}"); } catch { /* ignore */ }
+    if (rwCache[query]) return { english: rwCache[query], via: "ai" };
+    const remember = (english) => { try { rwCache[query] = english; const keys = Object.keys(rwCache); if (keys.length > 300) delete rwCache[keys[0]]; localStorage.setItem(RW_KEY, JSON.stringify(rwCache)); } catch { /* ignore */ } };
     if (window.Connect?.isDirect()) {
       try {
         const text = await Connect.complete("You convert research questions into English academic search keywords for an AI/CS paper index. Output strict JSON only.",
           [{ role: "user", content: `Question: ${query}\nReturn {"english": "<6-14 English keywords/phrases as they appear in paper titles and abstracts, space separated>"}` }], 200);
         const j = JSON.parse(text.slice(text.indexOf("{"), text.lastIndexOf("}") + 1));
         const english = String(j.english || "").replace(/[^\w\s\-]/g, " ").replace(/\s+/g, " ").trim();
-        if (english) return { english, via: "ai" };
+        if (english) { remember(english); return { english, via: "ai" }; }
       } catch { /* fall back below */ }
     }
     try {
       const res = await fetch("/api/query-rewrite", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ query }) });
-      if (res.ok) { const j = await res.json(); if (j.english) return { english: j.english, via: "ai" }; }
+      if (res.ok) { const j = await res.json(); if (j.english) { remember(j.english); return { english: j.english, via: "ai" }; } }
     } catch { /* fall back to the local dictionary */ }
     return { english: localRewrite(query), via: "local" };
   },

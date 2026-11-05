@@ -60,6 +60,16 @@ def norm_title(t: str) -> str:
     return re.sub(r"[^a-z0-9]", "", (t or "").lower())
 
 
+# Conferences held every other year. Semantic Scholar sometimes gives the preprint's year
+# (an ECCV 2024 paper listed under 2023); such labels are moved to the next edition.
+BIENNIAL = {"ECCV": 0, "ICCV": 1}   # venue -> year % 2 of its editions
+
+
+def venue_year(venue: str, year: int) -> int:
+    parity = BIENNIAL.get(venue)
+    return year + 1 if parity is not None and year % 2 != parity else year
+
+
 def merge_venues(best: dict, lo: str, hi: str) -> tuple[int, int]:
     """Add conference / journal papers from fetch_venues.py without duplicates.
 
@@ -84,7 +94,7 @@ def merge_venues(best: dict, lo: str, hi: str) -> tuple[int, int]:
                 nt = norm_title(p["title"])
                 hit = ext.get("ArXiv") if ext.get("ArXiv") in best else None
                 hit = hit or by_doi.get((ext.get("DOI") or "").lower()) or by_title.get(nt)
-                label = f"{p['_venue']} {p['_year']}"
+                label = f"{p['_venue']} {venue_year(p['_venue'], p['_year'])}"
                 if hit:
                     if not best[hit].get("venue"):
                         best[hit]["venue"] = label; marked += 1

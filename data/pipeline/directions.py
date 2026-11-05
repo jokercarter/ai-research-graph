@@ -241,7 +241,10 @@ def phase_build(a):
     dim = cache.shape[1]
     X = np.zeros((N, dim), dtype=np.float16)
     ok = rows >= 0
-    X[ok] = np.asarray(cache)[rows[ok]]
+    for i in range(0, N, 50000):  # copy in chunks: the whole cache does not fit in memory twice
+        r = rows[i:i + 50000]; m = r >= 0
+        X[i:i + 50000][m] = cache[r[m]]
+    del cache
     print(f"vectors ready: {N} papers, dim {dim} ({time.time() - t0:.0f}s)", flush=True)
 
     model_path = CACHE / "directions_model.npy"
