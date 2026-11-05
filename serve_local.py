@@ -180,6 +180,40 @@ PLAN_SYSTEM = re.search(r"const PLAN_SYSTEM = `(.*?)`;", (ROOT / "app/api/ask/ro
 ANSWER_TEMPLATE = re.search(r"return `(You are a research assistant.*?)`;", (ROOT / "app/api/ask/route.ts").read_text(encoding="utf-8"), re.S).group(1)
 
 
+REWRITE_FILE = ROOT / "data" / "work" / "rewrite_cache.json"
+try:
+    REWRITE_CACHE = json.loads(REWRITE_FILE.read_text(encoding="utf-8"))
+except Exception:  # noqa: BLE001
+    REWRITE_CACHE = {}
+
+
+def save_rewrite_cache():
+    try:
+        REWRITE_FILE.parent.mkdir(parents=True, exist_ok=True)
+        REWRITE_FILE.write_text(json.dumps(REWRITE_CACHE, ensure_ascii=False), encoding="utf-8")
+    except OSError:
+        pass
+
+
+# Search-page AI assistant (same text as assistPrompt in public/research/app.js).
+ASSIST_SYSTEM = "You are a literature assistant on an AI/CS paper search site. Use only the candidate papers given. Output strict JSON only."
+ASSIST_MODES = {
+    "review": "梳理综述：按研究主题、方法和时间阶段组织这些论文，形成文献综述提纲。",
+    "related": "找相关论文：挑出与问题最相关的论文，并说明各自相关在哪里。",
+    "compare": "比较方法：选 2–5 篇方法差异明显的论文，比较思路、数据、优点和局限；摘要里没有的写“摘要未提及”。",
+    "gaps": "找研究空白：根据这些论文覆盖和没有覆盖的内容，提出值得核实的研究空白，不要把推测写成事实。",
+    "frontier": "找前沿：关注最近的论文，说明哪些做法是新出现或正在升温的。",
+}
+
+
+def assist_prompt(query, mode, cands):
+    lst = "\n".join(f"[{c['id']}] {c.get('title', '')} ({c.get('year', '')}{', ' + c['venue'] if c.get('venue') and c['venue'] != 'arXiv' else ''})\n{str(c.get('abstract', ''))[:260]}" for c in cands)
+    return (f"任务：{ASSIST_MODES.get(mode, ASSIST_MODES['review'])}\n用户的问题：{query}\n"
+            "要求：只依据下面的候选论文（摘要片段）；用简体中文，论文标题和术语保留英文；每条要点附支撑它的论文 ID。\n"
+            '只输出 JSON：{"answer": {"summary": "<2-3 句总结>", "key_points": [{"text": "<要点>", "evidence_ids": ["<ID>"]}], "evidence_ids": ["<ID>"]}, "view": {"gaps": ["<研究空白，仅 gaps 模式需要>"]}}\n'
+            f"候选论文：\n{lst}")
+
+
 def answer_system(sources, lang, overview="(none)"):
     key = [s for s in sources if s.get("abstract")]
     more = [s for s in sources if not s.get("abstract")]
@@ -351,13 +385,20 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         provider = body.get("provider") if body.get("provider") in ids else ids[0]
         try:
             if self.path.startswith("/api/query-rewrite"):
-                q = str(body.get("query", ""))[:240]
-                if provider == "mock" or provider in CLI_IDS:
-                    return self.send_json({"error": "本地订阅模式下中文检索使用内置词典"}, 503)
+                q = str(body.get("query", "")).strip()[:240]
+                if provider == "mock":
+                    return self.send_json({"error": "mock"}, 503)
+                if q in REWRITE_CACHE:
+                    return self.send_json(REWRITE_CACHE[q])
+                # Only writes keywords, so the fastest model is enough (also with the subscription).
                 text = complete(provider, "You convert research questions into English academic search keywords for an AI/CS paper index. Output strict JSON only.",
-                                [{"role": "user", "content": f'Question: {q}\nReturn {{"english": "<6-14 English keywords>", "terms": []}}'}], 200)
+                                [{"role": "user", "content": f'Question: {q}\nReturn {{"english": "<6-14 English keywords/phrases as they appear in paper titles and abstracts, space separated, most important first>"}}. Use standard technical terms (e.g. 大模型 -> large language model, 去模糊 -> deblurring). No explanations.'}],
+                                200, model="haiku" if provider in CLI_IDS else None)
                 j = json.loads(text[text.index("{"): text.rindex("}") + 1])
-                return self.send_json({"english": re.sub(r"[^\w\s\-]", " ", j.get("english", "")).strip(), "terms": j.get("terms", [])})
+                out = {"english": re.sub(r"[^\w\s\-]", " ", str(j.get("english", ""))).strip()[:200]}
+                if out["english"]:
+                    REWRITE_CACHE[q] = out; save_rewrite_cache()
+                return self.send_json(out)
             if self.path.startswith("/api/ask"):
                 q = str(body.get("question", ""))[:600]
                 req_model = str(body.get("model") or "")
@@ -396,7 +437,25 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                 self.wfile.write(b"0\r\n\r\n")
                 return
             if self.path.startswith("/api/ai-search"):
-                return self.send_json({"error": "本地预览请使用「AI 问答」页面"}, 503)
+                if provider == "mock":
+                    return self.send_json({"error": "mock"}, 503)
+                q = str(body.get("query", "")).strip()[:240]
+                cands = [c for c in body.get("candidates", []) if isinstance(c, dict) and c.get("id") and c.get("title")][:30]
+                if not cands:
+                    return self.send_json({"error": "没有可供 AI 分析的论文"}, 400)
+                req_model = str(body.get("model") or "")
+                cli_model = req_model if req_model in CLAUDE_MODELS else None
+                REQ_MODEL["api"] = req_model if re.fullmatch(r"claude-[a-z0-9.\-]{3,40}", req_model) else None
+                text = complete(provider, ASSIST_SYSTEM, [{"role": "user", "content": assist_prompt(q, str(body.get("mode") or "review"), cands)}], 1600, model=cli_model)
+                j = json.loads(text[text.index("{"): text.rindex("}") + 1])
+                ids = {str(c["id"]) for c in cands}
+                keep = lambda xs: [str(x) for x in (xs or []) if str(x) in ids][:6]
+                ans = j.get("answer") or {}
+                return self.send_json({
+                    "answer": {"summary": str(ans.get("summary", ""))[:800],
+                               "key_points": [{"text": str(k.get("text", ""))[:300], "evidence_ids": keep(k.get("evidence_ids"))} for k in (ans.get("key_points") or [])[:8] if isinstance(k, dict) and k.get("text")],
+                               "evidence_ids": keep(ans.get("evidence_ids"))},
+                    "view": {"gaps": [str(g)[:240] for g in ((j.get("view") or {}).get("gaps") or [])[:6]]}})
             return self.send_json({"error": "not found"}, 404)
         except urllib.error.HTTPError as e:
             return self.send_json({"error": f"模型服务返回 {e.code}: {e.read()[:300].decode('utf-8', 'ignore')}"}, 502)
