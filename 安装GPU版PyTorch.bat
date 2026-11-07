@@ -49,6 +49,7 @@ if not defined OK (
 echo.
 echo ===== 4/4 安装其他依赖 =====
 %VPY% -m pip install -q transformers numpy scikit-learn
+%VPY% -m pip install -q -r requirements-agent.txt
 echo.
 %VPY% -c "import torch; print('PyTorch', torch.__version__, '| CUDA 可用：', torch.cuda.is_available(), '|', torch.cuda.get_device_name(0))"
 echo.

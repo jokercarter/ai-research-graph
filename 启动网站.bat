@@ -3,7 +3,9 @@ chcp 65001 >nul
 title AI Research Graph
 cd /d "%~dp0"
 set PY=
-where python >nul 2>nul && set PY=python
+rem 项目自己的环境装有 numpy 和 LangGraph（Agent 模式需要），有就优先用它
+if exist "data\work\venv-gpu\Scripts\python.exe" set PY="data\work\venv-gpu\Scripts\python.exe"
+if not defined PY where python >nul 2>nul && set PY=python
 if not defined PY where py >nul 2>nul && set PY=py
 if not defined PY (
   echo 没有找到 Python。请先安装：https://www.python.org/downloads/

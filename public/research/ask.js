@@ -6,6 +6,8 @@ const Ask = {
   turns: [],          // {q, answer, sources:[{n,key,title,date,authors,abstract,cat}], queries, provider}
   provider: "",
   busy: false,
+  agentInfo: null,    // GET /api/agent (local server only): {available, providers, reason}
+  agentOn: localStorage.getItem("airg.agent.on") === "1",
 };
 const ASK_KEY = "airg.ask.v1";
 // Same prompts as app/api/ask/route.ts (used when the visitor connects with their own key).
@@ -73,6 +75,7 @@ function newConv() {
 }
 function deleteConv(id) {
   if (Ask.busy && id === Ask.cur) return;
+  if (Ask.agentInfo?.available) fetch("/api/agent/forget", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ thread_id: id }) }).catch(() => {});
   Ask.convs = Ask.convs.filter((x) => x.id !== id);
   if (id === Ask.cur) { Ask.cur = null; const c = Ask.convs.find((x) => x.turns.length) || null; if (c) { Ask.cur = c.id; Ask.turns = c.turns; } else { Ask.turns = []; newConv(); return; } }
   saveAsk(); renderThread(); renderSide();
@@ -142,6 +145,7 @@ function followUps(text) {
   return line.replace(/^\s*延伸问题[:：]\s*/, "").split(/[｜|]/).map((s) => s.trim()).filter(Boolean).slice(0, 3);
 }
 
+const STEP_LABEL = { plan: "规划", gather: "检索", review: "自查", act: "补充检索", select: "选资料", answer: "回答", check: "核对" };
 function turnHtml(t, i) {
   const fu = followUps(t.answer || "");
   return `<div class="turn" id="turn${i}">
@@ -150,6 +154,8 @@ function turnHtml(t, i) {
     <div class="a">${t.answer ? mdLite(t.answer, t.sources) : t.error ? "" : `<div class="loading" style="padding:6px 0">${esc(t.status || "正在思考…")}</div>`}
       ${t.error ? `<div class="error" style="margin-top:8px">${esc(t.error)}${/40[13]|key|未配置|调用失败/.test(t.error) ? ` <button class="btn small" data-reconnect>更换模型</button>` : ""}</div>` : ""}
       ${fu.length ? `<div class="chips" style="margin-top:10px">${fu.map((f) => `<button class="chip acc" data-follow="${esc(f)}">${esc(f)}</button>`).join("")}</div>` : ""}</div>
+    ${t.steps?.length ? `<details class="srcs" ${t.answer ? "" : "open"}><summary>Agent 执行了 ${t.steps.length} 步</summary>
+      ${t.steps.map((s) => `<div class="mini"><div><span class="reason">${esc(STEP_LABEL[s.node] || s.node)}</span>${esc(s.text)}</div></div>`).join("")}</details>` : ""}
     ${t.sources?.length ? `<details class="srcs" ${i === Ask.turns.length - 1 ? "open" : ""}><summary>参考的 ${t.sources.length} 篇论文（前 ${Math.min(8, t.sources.length)} 篇读了摘要）${t.queries?.length ? ` · 检索词：${esc(t.queries.join(" / "))}` : ""}</summary>
       ${t.sources.map((s) => `<div class="mini"><div><span class="reason">[${s.n}]</span><a href="${paperHref(s.key)}">${esc(s.title)}</a></div>
         <span class="m">${esc(s.date)} <button class="linkbtn ${Workspace.state.saved[s.key] ? "on" : ""}" data-save="${esc(s.key)}" data-title="${esc(s.title)}" data-year="${esc((String(s.date).match(/\d{4}/) || [""])[0])}">${Workspace.state.saved[s.key] ? "★" : "☆"}</button></span></div>`).join("")}
@@ -258,6 +264,7 @@ async function askSubmit() {
   const turn = { q, answer: "", sources: [], queries: [], status: "正在理解问题、生成检索词…" };
   Ask.turns.push(turn); const cc = curConv(); if (cc) cc.updated = Date.now(); renderThread(); scrollToTurn();
   try {
+    if (agentMode()) { await agentAsk(turn, q, history, pinned, conn); return; }
     let language = CoreUtil.hasCJK(q) ? "zh" : "en";
     // English question without earlier context: search with it directly (no model call).
     const needPlan = CoreUtil.hasCJK(q) || history.length > 0;
@@ -304,11 +311,39 @@ async function askSubmit() {
     delete turn.status; Ask.busy = false; saveAsk(); renderThread(); renderSide();
   }
 }
+// ---- Agent mode (local server): plan -> search -> self-check -> answer, with memory ----
+function agentMode() { return Ask.agentOn && Ask.agentInfo?.available && !Connect.isDirect(); }
+async function agentAsk(turn, q, history, pinned, conn) {
+  turn.steps = []; turn.status = "Agent 正在规划检索…"; renderThread();
+  const res = await fetch("/api/agent", { method: "POST", headers: { "content-type": "application/json" },
+    body: JSON.stringify({ question: q, thread_id: Ask.cur, provider: conn.provider, model: Connect.requestModel(), pinned, history }) });
+  if (!res.ok || !res.body) { const j = await res.json().catch(() => ({})); throw new Error(j.error || `服务返回 ${res.status}`); }
+  const reader = res.body.getReader(); const dec = new TextDecoder(); let buf = "";
+  const handle = (ev) => {
+    if (ev.type === "step") { turn.steps.push({ node: ev.node, text: ev.text }); turn.status = ev.text; renderThread(); }
+    else if (ev.type === "result") {
+      Object.assign(turn, { answer: ev.answer, sources: ev.sources, dirs: ev.dirs, matched: ev.matched, queries: ev.queries });
+      if (ev.usage) turn.usage = ev.usage;
+      turn.provider = `${conn.label} · ${ev.model && ev.model !== "Claude Code" ? ev.model : Connect.choice().label} · Agent`;
+      const c = curConv(); if (c && !c.title) { c.title = q.slice(0, 40); c.updated = Date.now(); }
+    } else if (ev.type === "error") throw new Error(ev.error);
+  };
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buf += dec.decode(value, { stream: true });
+    let i;
+    while ((i = buf.indexOf("\n")) >= 0) { const line = buf.slice(0, i).trim(); buf = buf.slice(i + 1); if (line) handle(JSON.parse(line)); }
+  }
+  if (buf.trim()) handle(JSON.parse(buf));
+  if (!turn.answer) throw new Error("Agent 没有返回回答");
+}
 function scrollToTurn() { const el = document.getElementById(`turn${Ask.turns.length - 1}`); el?.scrollIntoView({ behavior: "smooth", block: "start" }); }
 
 async function viewAsk(hash) {
   setNav("ask");
   const conn = await askProviders();
+  if (!Ask.agentInfo) Ask.agentInfo = await fetch("/api/agent").then((r) => (r.ok ? r.json() : null)).catch(() => null);
   const pinned = new URLSearchParams(hash.split("?")[1] || "").get("paper");
   let pinTitle = "";
   if (pinned) { const sid = await Core.sidOfKey(pinned); if (sid !== null) pinTitle = (await Core.lite(sid)).title; }
@@ -323,6 +358,7 @@ async function viewAsk(hash) {
     <div class="section-head"><h1>AI 问答</h1>
       <div class="row-actions">${conn ? `<span class="chip new">● ${esc(conn.label)}</span>
         <label class="modelpick" title="切换 Claude 模型">模型 <select id="askModel">${CLAUDE_CHOICES.map((m) => `<option value="${m.id}" ${m.id === Connect.choice().id ? "selected" : ""}>${m.label} · ${m.note}</option>`).join("")}</select></label>` : ""}
+        ${conn && Ask.agentInfo?.available && !Connect.isDirect() ? `<label class="modelpick" title="多步检索：拆分子问题、自查后补充检索、核对引用，并记住本对话前面的论文。更慢，也更耗额度"><input type="checkbox" id="askAgent" ${Ask.agentOn ? "checked" : ""}> Agent 模式</label>` : ""}
         <button class="btn small" id="askConn">${conn ? "更换模型" : "连接模型"}</button><button class="btn small" id="askClear">新对话</button><button class="btn small side-toggle" id="sideToggle">历史</button></div></div>
     ${conn ? "" : `<div class="ai" style="margin:10px 0"><b>先连接一个模型</b><p class="conn-desc" style="margin:6px 0 10px">可以用已登录的 Claude Code（Pro/Max 包月订阅），或者填写自己的 Claude API key（只保存在你的浏览器里）。</p><button class="btn primary" id="askConn2">连接 Claude</button></div>`}
     ${pinTitle ? `<div class="chip acc" style="margin:8px 0">围绕论文提问：${esc(pinTitle)}</div>` : ""}
@@ -338,6 +374,8 @@ async function viewAsk(hash) {
   document.getElementById("askClear").onclick = newConv;
   document.getElementById("askConn").onclick = openConnect;
   const pick = document.getElementById("askModel");
+  const ag = document.getElementById("askAgent");
+  if (ag) ag.onchange = () => { Ask.agentOn = ag.checked; localStorage.setItem("airg.agent.on", ag.checked ? "1" : "0"); toast(ag.checked ? "已开启 Agent 模式：会多步检索，回答更慢" : "已关闭 Agent 模式"); };
   if (pick) pick.onchange = () => { Connect.setModel(pick.value); toast(`已切换到 ${Connect.choice().label}，下一个问题生效`); };
   document.getElementById("askConn2")?.addEventListener("click", openConnect);
   if (new URLSearchParams(hash.split("?")[1] || "").get("connect") === "1") { history.replaceState(null, "", "#/ask"); openConnect(); }

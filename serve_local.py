@@ -80,11 +80,11 @@ def providers():
 REQ_MODEL = {"api": None}
 
 
-def call(provider: str, system: str, messages: list, max_tokens: int, stream: bool):
+def call(provider: str, system: str, messages: list, max_tokens: int, stream: bool, api_model=None):
     if provider == "anthropic":
         req = urllib.request.Request("https://api.anthropic.com/v1/messages", method="POST",
             headers={"x-api-key": os.environ["ANTHROPIC_API_KEY"], "anthropic-version": "2023-06-01", "content-type": "application/json"},
-            data=json.dumps({"model": REQ_MODEL["api"] or os.environ.get("ANTHROPIC_MODEL", "claude-sonnet-5-5"), "max_tokens": max_tokens, "system": system, "messages": messages, "stream": stream}).encode())
+            data=json.dumps({"model": api_model or REQ_MODEL["api"] or os.environ.get("ANTHROPIC_MODEL", "claude-sonnet-5-5"), "max_tokens": max_tokens, "system": system, "messages": messages, "stream": stream}).encode())
     else:
         req = urllib.request.Request("https://api.openai.com/v1/responses", method="POST",
             headers={"authorization": "Bearer " + os.environ["OPENAI_API_KEY"], "content-type": "application/json"},
@@ -141,10 +141,10 @@ def run_cli(provider, system, messages, timeout=240, model=None) -> str:
     return text
 
 
-def complete(provider, system, messages, max_tokens=600, model=None) -> str:
+def complete(provider, system, messages, max_tokens=600, model=None, api_model=None) -> str:
     if provider in CLI_IDS:
         return run_cli(provider, system, messages, timeout=120, model=model)
-    with call(provider, system, messages, max_tokens, False) as r:
+    with call(provider, system, messages, max_tokens, False, api_model=api_model) as r:
         data = json.loads(r.read())
     if provider == "anthropic":
         return "".join(c.get("text", "") for c in data.get("content", []) if c.get("type") == "text")
@@ -217,7 +217,7 @@ def assist_prompt(query, mode, cands):
 def answer_system(sources, lang, overview="(none)"):
     key = [s for s in sources if s.get("abstract")]
     more = [s for s in sources if not s.get("abstract")]
-    lst = "\n\n".join(f"[{s['n']}] {s.get('title', '')} ({s.get('date', '?')})\n{str(s['abstract'])[:600]}" for s in key)
+    lst = "\n\n".join(f"[{s['n']}] {s.get('title', '')} ({s.get('date', '?')})\n{str(s['abstract'])[:1300]}" for s in key)
     mr = "\n".join(f"[{s['n']}] {s.get('title', '')} ({s.get('date', '?')})" for s in more) or "(none)"
     return (ANSWER_TEMPLATE.replace('${lang === "en" ? "English" : "Simplified Chinese"}', "English" if lang == "en" else "Simplified Chinese")
             .replace("${list}", lst).replace("${more}", mr).replace("${overview}", str(overview or "(none)")[:900]))
@@ -269,11 +269,14 @@ class QueryEmbedder:
         with self.lock:
             self.start()
 
-    def embed(self, q):
+    def embed(self, q, wait=None):
+        """wait: seconds to wait for the embedder (it may still be loading); None = no limit."""
         q = q.strip()[:500]
         if q in self.cache:
             return self.cache[q]
-        with self.lock:
+        if not self.lock.acquire(timeout=-1 if wait is None else wait):
+            return None
+        try:
             if not self.start():
                 return None
             try:
@@ -282,6 +285,8 @@ class QueryEmbedder:
             except Exception:  # noqa: BLE001
                 self.proc = None
                 return None
+        finally:
+            self.lock.release()
         v = out.get("v")
         if v:
             if len(self.cache) > 500:
@@ -291,6 +296,54 @@ class QueryEmbedder:
 
 
 EMBEDDER = QueryEmbedder()
+
+
+def search_tools():
+    """airg.tools (server-side search over the same data shards as the site; needs numpy).
+    Returns None when numpy is not installed, so the rest of the site still works."""
+    try:
+        from airg import tools
+    except ImportError:
+        return None
+    # Like the browser (4 s timeout on /api/embed): if the embedder is still loading, search
+    # goes on with the keyword-feedback vector instead of waiting.
+    tools.EMBED["fn"] = lambda q: EMBEDDER.embed(q, wait=4)
+    return tools
+
+
+AGENT_PROVIDERS = ("claude-cli", "anthropic")
+AGENT_FAST_API = "claude-haiku-5-5"
+
+
+def research_agent():
+    """airg.agent (LangGraph). Returns (module, None) or (None, reason it is unavailable)."""
+    if not search_tools():
+        return None, "服务端检索需要 numpy"
+    try:
+        from airg import agent
+    except ImportError:
+        venv = ROOT / "data/work/venv-gpu/Scripts/python.exe"
+        hint = f"用 {venv} 启动 serve_local.py" if venv.exists() else "pip install -r requirements-agent.txt"
+        return None, f"Agent 模式需要 LangGraph：{hint}"
+    agent.ANSWER_SYSTEM["fn"] = answer_system  # same answer prompt as the normal Q&A
+    return agent, None
+
+
+def agent_llm(provider, main_model, usage):
+    """llm(system, messages, tier, max_tokens) for airg.agent: "fast" steps use Haiku,
+    the answer uses the model chosen on the page."""
+    def llm(system, messages, tier, max_tokens):
+        if provider in CLI_IDS:
+            text = run_cli(provider, system, messages, timeout=240, model="haiku" if tier == "fast" else main_model["cli"])
+            usage["input"] += LAST_USAGE.get("input", 0); usage["output"] += LAST_USAGE.get("output", 0)
+            if tier == "main":
+                usage["model"] = LAST_MODEL["name"]
+            return text
+        api = AGENT_FAST_API if tier == "fast" else (main_model["api"] or os.environ.get("ANTHROPIC_MODEL", "claude-sonnet-5-5"))
+        if tier == "main":
+            usage["model"] = api
+        return complete(provider, system, messages, max_tokens, api_model=api)
+    return llm
 
 
 class Handler(http.server.SimpleHTTPRequestHandler):
@@ -350,11 +403,76 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             return {"started": True, "installing": not path}
         return {"started": False, "manual": "请在终端运行: curl -fsSL https://claude.ai/install.sh | bash，然后运行 claude 登录"}
 
+    def agent_request(self, body):
+        """POST /api/agent        {question, thread_id, provider, model, pinned?, history?}
+             -> NDJSON stream: {"type":"step","node","text"} ... then {"type":"result",...} or {"type":"error"}
+           POST /api/agent/forget {thread_id} -> deletes that conversation's agent memory"""
+        agent, why = research_agent()
+        thread = re.sub(r"[^\w\-]", "", str(body.get("thread_id") or ""))[:64]
+        if self.path.startswith("/api/agent/forget"):
+            if agent and thread:
+                agent.forget(thread)
+            return self.send_json({"ok": True})
+        if not agent:
+            return self.send_json({"error": why}, 503)
+        ids = [p["id"] for p in providers() if p["id"] in AGENT_PROVIDERS]
+        if not ids:
+            return self.send_json({"error": "Agent 模式需要已登录的 Claude Code 或服务器上的 ANTHROPIC_API_KEY"}, 503)
+        provider = body.get("provider") if body.get("provider") in ids else ids[0]
+        q = str(body.get("question", "")).strip()[:600]
+        if len(q) < 2:
+            return self.send_json({"error": "问题太短"}, 400)
+        req_model = str(body.get("model") or "")
+        main_model = {"cli": req_model if req_model in CLAUDE_MODELS else None,
+                      "api": req_model if re.fullmatch(r"claude-[a-z0-9.\-]{3,40}", req_model) else None}
+        history = [{"role": "assistant" if m.get("role") == "assistant" else "user", "content": str(m["content"])[:800]}
+                   for m in (body.get("history") or [])[-4:] if isinstance(m, dict) and m.get("content")]
+        pinned = re.sub(r"[^\w.\-]", "", str(body.get("pinned") or ""))[:40] or None
+        usage = {"input": 0, "output": 0, "model": ""}
+        self.send_response(200)
+        self.send_header("content-type", "application/x-ndjson; charset=utf-8")
+        self.send_header("transfer-encoding", "chunked"); self.end_headers()
+
+        def emit(obj):
+            data = (json.dumps(obj, ensure_ascii=False) + "\n").encode()
+            self.wfile.write(f"{len(data):x}\r\n".encode() + data + b"\r\n"); self.wfile.flush()
+        try:
+            for kind, x in agent.run(agent_llm(provider, main_model, usage), q, thread or "default", pinned=pinned, client_history=history):
+                if kind == "step":
+                    emit({"type": "step", **x})
+                else:
+                    emit({"type": "result", "answer": x.get("answer", ""), "sources": x.get("sources", []), "dirs": x.get("dirs", []),
+                          "matched": x.get("matched", 0), "queries": [qq for s in x.get("subqs", []) for qq in s["queries"]],
+                          "language": x.get("language"), "provider": provider, "model": usage["model"],
+                          "usage": {"input": usage["input"], "output": usage["output"]} if usage["input"] else None})
+        except (BrokenPipeError, ConnectionResetError):
+            return
+        except urllib.error.HTTPError as e:
+            emit({"type": "error", "error": f"模型服务返回 {e.code}: {e.read()[:300].decode('utf-8', 'ignore')}"})
+        except subprocess.TimeoutExpired:
+            emit({"type": "error", "error": "模型响应超时，请稍后重试"})
+        except Exception as e:  # noqa: BLE001
+            emit({"type": "error", "error": str(e)[:400]})
+        try:
+            self.wfile.write(b"0\r\n\r\n")
+        except OSError:
+            pass
+
     def do_GET(self):
         if self.path.startswith("/api/claude/status"):
             if not self.local_only():
                 return
             return self.send_json(self.claude_status("check=1" in self.path))
+        if self.path.rstrip("/") == "/api/tools":
+            tools = search_tools()
+            if not tools:
+                return self.send_json({"error": "服务端检索需要 numpy：pip install numpy"}, 503)
+            return self.send_json({"tools": tools.tool_specs()})
+        if self.path.rstrip("/") == "/api/agent":
+            agent, why = research_agent()
+            ids = [p["id"] for p in providers() if p["id"] in AGENT_PROVIDERS]
+            return self.send_json({"available": bool(agent and ids), "providers": ids,
+                                   "reason": why or ("" if ids else "Agent 模式需要已登录的 Claude Code 或服务器上的 ANTHROPIC_API_KEY")})
         if self.path.startswith("/api/ask"):
             p = providers()
             return self.send_json({"providers": p, "default": p[0]["id"] if p else None})
@@ -369,6 +487,30 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                 q = ""
             v = EMBEDDER.embed(q) if q.strip() else None
             return self.send_json({"v": v} if v else {"error": EMBEDDER.failed or "embedder unavailable"}, 200 if v else 503)
+        if self.path.startswith("/api/tools/"):
+            # Read-only search tools for agents (see airg/tools.py). JSON bodies force a CORS
+            # preflight that this server never answers, so other websites cannot call them.
+            try:
+                args = json.loads(self.rfile.read(length) or b"{}")
+            except json.JSONDecodeError:
+                return self.send_json({"error": "请求格式无效"}, 400)
+            tools = search_tools()
+            if not tools:
+                return self.send_json({"error": "服务端检索需要 numpy：pip install numpy"}, 503)
+            name = self.path.split("?")[0][len("/api/tools/"):].strip("/")
+            if name not in tools.TOOLS:
+                return self.send_json({"error": f"unknown tool {name!r}"}, 404)
+            try:
+                out = tools.call_tool(name, args if isinstance(args, dict) else {})
+            except Exception as e:  # noqa: BLE001
+                return self.send_json({"error": f"检索出错：{e}"}, 500)
+            return self.send_json(out, 400 if "error" in out else 200)
+        if self.path.startswith("/api/agent"):
+            try:
+                body = json.loads(self.rfile.read(length) or b"{}")
+            except json.JSONDecodeError:
+                return self.send_json({"error": "请求格式无效"}, 400)
+            return self.agent_request(body)
         if self.path.startswith("/api/claude/login"):
             self.rfile.read(length)
             if not self.local_only():
