@@ -1,0 +1,6 @@
+# Server-side search and the research agent (airg/). Installed into data/work/venv-gpu by
+# 安装GPU版PyTorch.bat; to add them to another Python: pip install -r requirements-agent.txt
+numpy>=1.26
+langgraph>=1.2
+langgraph-checkpoint-sqlite>=3.0
+langsmith>=0.14

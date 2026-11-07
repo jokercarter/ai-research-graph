@@ -224,6 +224,31 @@ python data/pipeline/build_simple.py all --start 2021-12-01 --end 2026-11-30
 - 邮箱登录（Claude Code）模式下，用 `--system-prompt-file` 替换 Claude Code 自带的长系统提示，并用 `--tools ""` 关闭工具，避免每次额外消耗上万 tokens（旧版 CLI 不支持时自动退回普通调用）
 - 每条回答下方显示本次的输入 / 输出 token 数
 
+### Agent 模式（本地，LangGraph）
+
+AI 问答页的 **"Agent 模式"** 开关（只在本地服务、且用 Claude Code 邮箱登录或服务器 key 时出现）把上面的固定流程换成一个 LangGraph 工作流（`airg/agent.py`），由模型决定查什么、查几次：
+
+```
+规划 ──► 检索 ──► 自查 ──► 选资料 ──► 回答 ──► 核对引用
+                   ▲  │
+                   └─ 补充检索（最多 2 轮，每轮最多 3 次工具调用）
+```
+
+1. **规划**（Haiku）：把问题拆成 1–3 个子问题，每个配英文检索词；追问里的"第 2 篇"等会对应到上一轮的参考论文
+2. **检索**：每个子问题走一遍上面的全库资料筛选（`find_evidence`）；问题指向具体论文时读取它的完整摘要和相关论文
+3. **自查**（Haiku）：看已找到的论文标题，判断还缺什么，按需调用 `search_papers`（可按年份 / 分类 / 顶会筛选、按时间排序）、`related_papers`、`get_paper`、`get_direction`、`latest_in_category`；不会重复已执行过的调用
+4. **选资料**：在子问题之间轮流挑选，选出 20 篇（前 8 篇附摘要），保证每个子问题都有资料
+5. **回答**（页面上选的模型）：与普通问答相同的提示词，用 `[n]` 标注出处
+6. **核对引用**：删除指向不存在资料的编号
+
+**记忆**：每个对话的状态（历史问题、回答和参考论文）由 LangGraph 按对话保存到 `data/work/agent_memory.sqlite`，追问时可以引用前面的论文；在网页上删除对话时一并删除。
+
+**代价**：一次提问约 4–6 次模型调用，用 Claude Code 时约 50–70 秒、约 2 万输入 tokens（普通模式约 2 次调用）。
+
+**环境**：需要 `langgraph`、`langgraph-checkpoint-sqlite`（见 `requirements-agent.txt`）。`安装GPU版PyTorch.bat` 会把它们装进 `data/work/venv-gpu`，`启动网站.bat` 会优先用这个环境启动；用别的 Python 启动时开关不会出现，普通问答不受影响。
+
+**LangSmith（可选）**：在 `.env.local` 中设置 `LANGSMITH_TRACING=true` 和 `LANGSMITH_API_KEY=...` 后，每次运行的节点、工具调用和模型输入输出会上传到 LangSmith 便于调试。注意这会把问题和论文摘要发送给 LangSmith。
+
 ---
 
 ## 项目结构
@@ -253,6 +278,12 @@ AI Research Graph/
 │       ├── ask/              AI 问答（检索词规划 + 流式回答）
 │       ├── query-rewrite/    中文问题 → 英文检索词
 │       └── ai-search/        搜索页的 AI 研究助手
+├── airg/                     服务端检索（Python，读取与网页相同的分片数据，需要 numpy）
+│   ├── search.py             core.js 检索与 ask.js 资料筛选的 Python 移植（结果与浏览器一致）
+│   ├── tools.py              面向 AI Agent 的检索工具（JSON 输入输出 + JSON Schema）
+│   └── agent.py              Agent 模式：LangGraph 工作流（规划、检索、自查补搜、回答、核对）与对话记忆
+├── requirements-agent.txt    airg/ 的依赖（numpy、LangGraph、LangSmith）
+├── scripts/parity_check.py   对比浏览器（core.js）与 Python（airg）的检索结果
 ├── lib/llm.ts                Claude（及 OpenAI）调用封装
 ├── lib/rate-limit.ts         按访客限流
 ├── serve_local.py            本地服务：静态页面 + 与线上一致的 AI 接口 + Claude Code 登录
@@ -277,6 +308,37 @@ AI Research Graph/
 
 本地专用接口要求请求头 `x-airg: 1`，其他网站无法跨域触发。
 
+### 服务端检索工具（仅本地，为 AI Agent 准备）
+
+`airg/` 把浏览器里的检索（`core.js`）移植成了 Python，直接读取 `public/research/data` 中同一套分片，结果与网页一致（用 `python scripts/parity_check.py` 核对）。`airg/tools.py` 把它包装成只读工具，供 Agent 调用：
+
+| 工具 | 说明 |
+|---|---|
+| `search_papers` | 模糊检索（关键词 + 语义 + 拼写纠正），可按年份、arXiv 分类、研究方向、是否发表于顶会 / 顶刊筛选 |
+| `get_paper` | 一篇论文的完整信息（摘要、作者、会议、研究方向、链接） |
+| `related_papers` | 语义最相近的论文 |
+| `find_evidence` | 与 AI 问答相同的资料筛选：全库召回 → 定位研究方向 → 扫描方向 → 去重选出约 20 篇 |
+| `list_directions` / `get_direction` | 150 个研究方向（按升温或规模排序）及每个方向的详情 |
+| `latest_in_category` | 某个 arXiv 主分类的最新论文 |
+| `index_info` | 收录范围与快照信息 |
+
+| 接口 | 方法 | 说明 |
+|---|---|---|
+| `/api/tools` | GET | 所有工具的名称、说明和 JSON Schema 参数 |
+| `/api/tools/<工具名>` | POST JSON 参数 | 调用一个工具，返回 JSON；参数错误返回 400 |
+| `/api/agent` | GET | Agent 模式是否可用 `{available, providers, reason}` |
+| `/api/agent` | POST `{question, thread_id, provider, model, pinned?, history?}` | 运行 Agent；逐行返回 JSON（NDJSON）：`{"type":"step"}` 若干条，最后 `{"type":"result", answer, sources, dirs, …}` 或 `{"type":"error"}` |
+| `/api/agent/forget` | POST `{thread_id}` | 删除一个对话的 Agent 记忆 |
+
+在 Python 中也可直接使用：
+
+```python
+from airg.tools import call_tool
+call_tool("search_papers", {"query": "vision language action model", "year_from": 2025, "limit": 5})
+```
+
+需要 numpy（`pip install numpy`）；没有 numpy 时这些接口返回 503，网站其他功能不受影响。本地向量模型加载完成后检索会使用真实的查询向量，加载中或不可用时与网页一样改用"关键词结果反馈"。
+
 ---
 
 ## 隐私与安全
@@ -286,6 +348,7 @@ AI Research Graph/
 - 访客的 API key 只保存在其浏览器中（可选择关闭标签页即清除），只发送给 `api.anthropic.com`
 - 服务器端的 key 只通过环境变量注入；`.env.local`、`data/work/` 不会提交到仓库
 - 邮箱登录模式下，Claude Code 在空的临时目录中运行，提示词要求不调用工具、不读写文件
+- Agent 模式的对话记忆保存在本机 `data/work/agent_memory.sqlite`（不提交）；只有设置了 LangSmith 环境变量时才会把运行记录发给 LangSmith
 
 ---
 
