@@ -126,7 +126,7 @@ async function viewSearch(hash, token) {
     <section>
       <div class="result-meta">约 ${fmt(Math.max(res.total, res.keywordTotal))} 篇相关论文 · 按相关度综合关键词与语义排序${rw.via !== "none" ? ` · 检索词：<b>${esc(res.query)}</b>${rw.via === "local" ? "（本地词典翻译）" : "（AI 翻译）"}` : ""}</div>
       ${res.fixes.length ? `<div class="result-meta">已自动纠正拼写：${res.fixes.map(([a, b]) => `<s>${esc(a)}</s> → <b>${esc(b)}</b>`).join("，")}</div>` : ""}
-      <div class="ai" id="aiBox"><div class="ai-head"><strong>AI 研究助手</strong><a class="btn small primary" href="#/ask?q=${encodeURIComponent(p.q)}">用 AI 问答深入</a>
+      <div class="ai" id="aiBox"><div class="ai-head"><strong>AI 研究助手</strong><a class="btn small primary" href="#/ask?q=${encodeURIComponent(p.q)}">用 AI 问答深入</a><a class="btn small" href="#/review?topic=${encodeURIComponent(p.q)}">生成文献综述</a>
         ${[["review", "梳理综述"], ["related", "找相关论文"], ["compare", "比较方法"], ["gaps", "找研究空白"], ["frontier", "找前沿"]].map(([k, t]) => `<button class="btn small" data-mode="${k}">${t}</button>`).join("")}</div>
         <div id="aiOut" class="note">基于前 30 篇检索结果的摘要生成，结论会标注出处论文（使用「连接 Claude」中选择的方式）。</div></div>
       <div id="results">${lites.length ? lites.map((l, i) => resultItem(l, pageHits[i])).join("") : `<div class="empty">没有找到匹配的论文。可以换个说法，或用英文关键词试试。</div>`}</div>
@@ -296,7 +296,8 @@ async function viewTrend(id) {
   <div class="chips" style="margin:6px 0 12px">${(t.keywords || []).map((k) => `<a class="chip acc" href="#/search?q=${encodeURIComponent(k)}">${esc(k)}</a>`).join("")}</div>
   <div class="row-actions"><button class="btn ${followed ? "on" : ""}" id="bFollow">${followed ? "已关注" : "关注这个方向"}</button>
     <a class="btn primary" href="#/direction/${t.id}">查看这个方向的全部论文（${fmt(t.size)} 篇）</a>
-    <a class="btn" href="#/ask?q=${encodeURIComponent(`${dirName(t)}方向最近有哪些主要进展和代表性方法？`)}">问 AI 这个方向的进展</a></div>
+    <a class="btn" href="#/ask?q=${encodeURIComponent(`${dirName(t)}方向最近有哪些主要进展和代表性方法？`)}">问 AI 这个方向的进展</a>
+    <a class="btn" href="#/review?topic=${encodeURIComponent(dirName(t))}">生成这个方向的文献综述</a></div>
   <div class="metric-row"><div class="metric"><b>${fmt(t.recent)}</b><span>近 3 个月论文</span></div>
     <div class="metric"><b>${fmt(t.base)}</b><span>之前一年</span></div><div class="metric"><b>${growthLabel(t)}</b><span>论文占比变化</span></div>
     <div class="metric"><b>${fmt(t.size)}</b><span>收录期内总计</span></div></div>
@@ -385,6 +386,7 @@ async function route() {
     else if (path.startsWith("/trend/")) await viewTrend(Number(path.slice(7)));
     else if (path.startsWith("/direction/")) await viewDirection(Number(path.slice(11)), hash, token);
     else if (path === "/ask") await viewAsk(hash);
+    else if (path === "/review") await viewReview(hash);
     else if (path === "/library") await viewLibrary();
     else if (path === "/about") viewAbout();
     else $view.innerHTML = `<div class="empty">页面不存在。<a href="#/">回到首页</a></div>`;

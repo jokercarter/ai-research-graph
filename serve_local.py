@@ -26,6 +26,7 @@ import socketserver
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 import urllib.error
 import urllib.request
@@ -108,8 +109,10 @@ LAST_USAGE = {"input": 0, "output": 0}
 LEAN = {"ok": True}
 
 
-def run_cli(provider, system, messages, timeout=240, model=None) -> str:
-    """Ask the locally logged-in Claude Code (subscription) once; returns the reply text."""
+def run_cli(provider, system, messages, timeout=240, model=None, usage_out=None) -> str:
+    """Ask the locally logged-in Claude Code (subscription) once; returns the reply text.
+    usage_out (dict) receives this call's tokens and model, which is safe when several
+    calls run at once (LAST_USAGE / LAST_MODEL are shared)."""
     with tempfile.TemporaryDirectory() as tmp:  # empty working dir: the CLI sees no project files
         base = [CLAUDE_CLI, "-p", "--output-format", "json"]
         if model in CLAUDE_MODELS and model != "default":
@@ -134,10 +137,13 @@ def run_cli(provider, system, messages, timeout=240, model=None) -> str:
     if r.returncode != 0 or not text or data.get("is_error"):
         raise RuntimeError("Claude Code 调用失败（确认已用 Claude 账号登录；选 Opus 时也可能是订阅不支持或额度用完）：" + (text or r.stderr or r.stdout)[-300:])
     u = data.get("usage") or {}
-    LAST_USAGE["input"] = int(u.get("input_tokens", 0)) + int(u.get("cache_read_input_tokens", 0)) + int(u.get("cache_creation_input_tokens", 0))
-    LAST_USAGE["output"] = int(u.get("output_tokens", 0))
+    used_in = int(u.get("input_tokens", 0)) + int(u.get("cache_read_input_tokens", 0)) + int(u.get("cache_creation_input_tokens", 0))
+    used_out = int(u.get("output_tokens", 0))
     usage = data.get("modelUsage") or {}
-    LAST_MODEL["name"] = max(usage, key=lambda m: (usage[m] or {}).get("outputTokens", 0)) if usage else (model or "Claude Code")
+    used_model = max(usage, key=lambda m: (usage[m] or {}).get("outputTokens", 0)) if usage else (model or "Claude Code")
+    LAST_USAGE["input"], LAST_USAGE["output"], LAST_MODEL["name"] = used_in, used_out, used_model
+    if usage_out is not None:
+        usage_out.update(input=used_in, output=used_out, model=used_model)
     return text
 
 
@@ -329,15 +335,29 @@ def research_agent():
     return agent, None
 
 
+def research_review():
+    """airg.review (LangGraph literature review). Returns (module, None) or (None, reason)."""
+    agent, why = research_agent()
+    if not agent:
+        return None, why
+    from airg import review
+    return review, None
+
+
 def agent_llm(provider, main_model, usage):
-    """llm(system, messages, tier, max_tokens) for airg.agent: "fast" steps use Haiku,
-    the answer uses the model chosen on the page."""
+    """llm(system, messages, tier, max_tokens) for airg.agent / airg.review: "fast" steps
+    use Haiku, the writing uses the model chosen on the page. Safe to call from several
+    threads at once (the review writes its sections in parallel)."""
+    lock = threading.Lock()
+
     def llm(system, messages, tier, max_tokens):
         if provider in CLI_IDS:
-            text = run_cli(provider, system, messages, timeout=240, model="haiku" if tier == "fast" else main_model["cli"])
-            usage["input"] += LAST_USAGE.get("input", 0); usage["output"] += LAST_USAGE.get("output", 0)
-            if tier == "main":
-                usage["model"] = LAST_MODEL["name"]
+            used = {}
+            text = run_cli(provider, system, messages, timeout=300, model="haiku" if tier == "fast" else main_model["cli"], usage_out=used)
+            with lock:
+                usage["input"] += used.get("input", 0); usage["output"] += used.get("output", 0)
+                if tier == "main":
+                    usage["model"] = used.get("model", "")
             return text
         api = AGENT_FAST_API if tier == "fast" else (main_model["api"] or os.environ.get("ANTHROPIC_MODEL", "claude-sonnet-5-5"))
         if tier == "main":
@@ -415,20 +435,43 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             return self.send_json({"ok": True})
         if not agent:
             return self.send_json({"error": why}, 503)
-        ids = [p["id"] for p in providers() if p["id"] in AGENT_PROVIDERS]
-        if not ids:
-            return self.send_json({"error": "Agent 模式需要已登录的 Claude Code 或服务器上的 ANTHROPIC_API_KEY"}, 503)
-        provider = body.get("provider") if body.get("provider") in ids else ids[0]
+        chosen = self.agent_model(body)
+        if not chosen:
+            return
+        provider, main_model = chosen
         q = str(body.get("question", "")).strip()[:600]
         if len(q) < 2:
             return self.send_json({"error": "问题太短"}, 400)
-        req_model = str(body.get("model") or "")
-        main_model = {"cli": req_model if req_model in CLAUDE_MODELS else None,
-                      "api": req_model if re.fullmatch(r"claude-[a-z0-9.\-]{3,40}", req_model) else None}
         history = [{"role": "assistant" if m.get("role") == "assistant" else "user", "content": str(m["content"])[:800]}
                    for m in (body.get("history") or [])[-4:] if isinstance(m, dict) and m.get("content")]
         pinned = re.sub(r"[^\w.\-]", "", str(body.get("pinned") or ""))[:40] or None
         usage = {"input": 0, "output": 0, "model": ""}
+
+        def events():
+            for kind, x in agent.run(agent_llm(provider, main_model, usage), q, thread or "default", pinned=pinned, client_history=history):
+                if kind == "step":
+                    yield {"type": "step", **x}
+                else:
+                    yield {"type": "result", "answer": x.get("answer", ""), "sources": x.get("sources", []), "dirs": x.get("dirs", []),
+                           "matched": x.get("matched", 0), "queries": [qq for s in x.get("subqs", []) for qq in s["queries"]],
+                           "language": x.get("language"), "provider": provider, "model": usage["model"],
+                           "usage": {"input": usage["input"], "output": usage["output"]} if usage["input"] else None}
+        self.stream_events(events())
+
+    def agent_model(self, body):
+        """(provider, {"cli", "api"}) for agent requests, or None after sending the error."""
+        ids = [p["id"] for p in providers() if p["id"] in AGENT_PROVIDERS]
+        if not ids:
+            self.send_json({"error": "Agent 需要已登录的 Claude Code 或服务器上的 ANTHROPIC_API_KEY"}, 503)
+            return None
+        provider = body.get("provider") if body.get("provider") in ids else ids[0]
+        req_model = str(body.get("model") or "")
+        return provider, {"cli": req_model if req_model in CLAUDE_MODELS else None,
+                          "api": req_model if re.fullmatch(r"claude-[a-z0-9.\-]{3,40}", req_model) else None}
+
+    def stream_events(self, events):
+        """Sends dicts from `events` as an NDJSON stream (chunked); errors become a final
+        {"type": "error"} line."""
         self.send_response(200)
         self.send_header("content-type", "application/x-ndjson; charset=utf-8")
         self.send_header("transfer-encoding", "chunked"); self.end_headers()
@@ -437,14 +480,8 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             data = (json.dumps(obj, ensure_ascii=False) + "\n").encode()
             self.wfile.write(f"{len(data):x}\r\n".encode() + data + b"\r\n"); self.wfile.flush()
         try:
-            for kind, x in agent.run(agent_llm(provider, main_model, usage), q, thread or "default", pinned=pinned, client_history=history):
-                if kind == "step":
-                    emit({"type": "step", **x})
-                else:
-                    emit({"type": "result", "answer": x.get("answer", ""), "sources": x.get("sources", []), "dirs": x.get("dirs", []),
-                          "matched": x.get("matched", 0), "queries": [qq for s in x.get("subqs", []) for qq in s["queries"]],
-                          "language": x.get("language"), "provider": provider, "model": usage["model"],
-                          "usage": {"input": usage["input"], "output": usage["output"]} if usage["input"] else None})
+            for ev in events:
+                emit(ev)
         except (BrokenPipeError, ConnectionResetError):
             return
         except urllib.error.HTTPError as e:
@@ -458,6 +495,61 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         except OSError:
             pass
 
+    def review_request(self, body):
+        """POST /api/review         {topic, thread_id, provider, model, year_from?, year_to?, confirm?}
+           POST /api/review/resume  {thread_id, provider, model, outline:{title, sections:[{id?, title, focus}]}}
+             -> NDJSON: {"type":"step","node","text"} ... then {"type":"outline",...} (paused for the
+                user to edit the outline), {"type":"result",...} or {"type":"error"}
+           POST /api/review/forget  {thread_id}"""
+        review, why = research_review()
+        thread = re.sub(r"[^\w\-]", "", str(body.get("thread_id") or ""))[:64]
+        if self.path.startswith("/api/review/forget"):
+            if review and thread:
+                review.forget(thread)
+            return self.send_json({"ok": True})
+        if not review:
+            return self.send_json({"error": why}, 503)
+        if not thread:
+            return self.send_json({"error": "缺少 thread_id"}, 400)
+        chosen = self.agent_model(body)
+        if not chosen:
+            return
+        provider, main_model = chosen
+        usage = {"input": 0, "output": 0, "model": ""}
+        llm = agent_llm(provider, main_model, usage)
+        if self.path.startswith("/api/review/resume"):
+            outline = body.get("outline") if isinstance(body.get("outline"), dict) else None
+            run = review.resume(llm, thread, outline)
+        else:
+            topic = re.sub(r"\s+", " ", str(body.get("topic", ""))).strip()[:300]
+            if len(topic) < 2:
+                return self.send_json({"error": "主题太短"}, 400)
+
+            def year(v):
+                try:
+                    y = int(v or 0)
+                except (TypeError, ValueError):
+                    return 0
+                return y if 2000 <= y <= 2100 else 0
+            run = review.start(llm, topic, thread, year_from=year(body.get("year_from")), year_to=year(body.get("year_to")),
+                               confirm=body.get("confirm", True) is not False)
+
+        def events():
+            for kind, x in run:
+                u = {"input": usage["input"], "output": usage["output"]} if usage["input"] else None
+                if kind == "step":
+                    yield {"type": "step", **x}
+                elif kind == "outline":
+                    yield {"type": "outline", "outline": x, "usage": u}
+                else:
+                    yield {"type": "result", "title": x.get("title"), "topic": x.get("topic"), "language": x.get("language"),
+                           "body": x.get("body", ""), "markdown": x.get("markdown", ""), "references": x.get("references", []),
+                           "bibtex": x.get("bibtex", ""), "sections": [s["title"] for s in (x.get("outline") or {}).get("sections", [])],
+                           "dirs": [{"id": d["id"], "name": d["name"]} for d in x.get("dirs") or []], "matched": x.get("matched", 0),
+                           "candidates": len(x.get("pool") or []), "papers": len(x.get("sources") or []),
+                           "provider": provider, "model": usage["model"], "usage": u}
+        self.stream_events(events())
+
     def do_GET(self):
         if self.path.startswith("/api/claude/status"):
             if not self.local_only():
@@ -468,8 +560,8 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             if not tools:
                 return self.send_json({"error": "服务端检索需要 numpy：pip install numpy"}, 503)
             return self.send_json({"tools": tools.tool_specs()})
-        if self.path.rstrip("/") == "/api/agent":
-            agent, why = research_agent()
+        if self.path.rstrip("/") in ("/api/agent", "/api/review"):
+            agent, why = research_review() if self.path.startswith("/api/review") else research_agent()
             ids = [p["id"] for p in providers() if p["id"] in AGENT_PROVIDERS]
             return self.send_json({"available": bool(agent and ids), "providers": ids,
                                    "reason": why or ("" if ids else "Agent 模式需要已登录的 Claude Code 或服务器上的 ANTHROPIC_API_KEY")})
@@ -505,12 +597,14 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             except Exception as e:  # noqa: BLE001
                 return self.send_json({"error": f"检索出错：{e}"}, 500)
             return self.send_json(out, 400 if "error" in out else 200)
-        if self.path.startswith("/api/agent"):
+        if self.path.startswith(("/api/agent", "/api/review")):
             try:
                 body = json.loads(self.rfile.read(length) or b"{}")
             except json.JSONDecodeError:
                 return self.send_json({"error": "请求格式无效"}, 400)
-            return self.agent_request(body)
+            if not isinstance(body, dict):
+                return self.send_json({"error": "请求格式无效"}, 400)
+            return self.review_request(body) if self.path.startswith("/api/review") else self.agent_request(body)
         if self.path.startswith("/api/claude/login"):
             self.rfile.read(length)
             if not self.local_only():

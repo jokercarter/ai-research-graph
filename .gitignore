@@ -55,3 +55,5 @@ __pycache__/
 # Local publishing helpers
 /发布到GitHub.bat
 /scripts/publish-github.ps1
+
+.claude/settings.local.json
