@@ -37,6 +37,7 @@
 | 研究方向 | `#/topics`、`#/trend/<id>` | 根据摘要语义把论文归入 150 个研究方向（每篇 1–3 个），按近 3 个月的占比增长排序；每个方向有中文名、说明、关键词、每月趋势、最新与最典型的论文 |
 | 领域最新 | `#/category/<分类>` | 某个 arXiv 主分类（如 cs.CV）按时间倒序的全部论文 |
 | AI 问答 | `#/ask` | Claude 先从全部论文中定位研究方向、筛选资料，再回答，每条结论带 `[n]` 出处；多轮追问、延伸问题、一键收藏参考论文；可切换 Sonnet / Opus / Haiku；左侧边栏保存历史对话（可搜索、切换、删除） |
+| 文献综述 | `#/review` | **仅本地**：输入主题，Agent 检索全库、拟定大纲（可修改后再写）、分节撰写，生成带 `[n]` 引用的综述、参考文献和 BibTeX；可下载 Markdown / .bib，一键收藏全部参考文献；研究方向页和搜索页有入口 |
 | 我的文献 | `#/library` | 收藏的论文、关注的方向；导出 BibTeX / CSV，备份与导入工作区 |
 | 数据说明 | `#/about` | 收录范围、数据来源、算法说明、隐私说明 |
 
@@ -249,6 +250,29 @@ AI 问答页的 **"Agent 模式"** 开关（只在本地服务、且用 Claude C
 
 **LangSmith（可选）**：在 `.env.local` 中设置 `LANGSMITH_TRACING=true` 和 `LANGSMITH_API_KEY=...` 后，每次运行的节点、工具调用和模型输入输出会上传到 LangSmith 便于调试。注意这会把问题和论文摘要发送给 LangSmith。
 
+### 文献综述（本地，LangGraph）
+
+`#/review` 页面输入一个主题（如"检索增强生成"），由 `airg/review.py` 中的 LangGraph 工作流写出一篇结构化综述：
+
+```
+规划 ─► 普查 ─► 大纲 ─► 确认大纲 ─┬─► 分节检索 ×N（并行）─► 编号 ─┬─► 分节撰写 ×N（并行）─► 引言与展望 ─► 整理
+                     （暂停，等用户修改）                          
+```
+
+1. **规划**（Haiku）：综述题目、语言，以及 4–6 个不同角度的英文检索词（核心方法、变体、应用、评测、新趋势）
+2. **普查**：每个检索词在全库检索，合并成约 100 篇候选，并统计它们所属的研究方向和年份
+3. **大纲**（页面上选的模型）：把候选论文归纳成 3–5 节（技术路线或主题），每节配检索词和归入的论文
+4. **确认大纲**：工作流用 LangGraph 的 `interrupt` 暂停，页面显示大纲；可以改标题和描述、调整顺序、删除或新增一节，确认后从暂停处继续（状态保存在 checkpoint 中，刷新页面后仍可继续）。不勾选"先确认大纲"则直接往下走
+5. **分节检索**（`Send` 并行）：每节用与 AI 问答相同的资料筛选再检索一次，加上大纲阶段归入的论文，取 10 篇
+6. **编号**：全文统一编号，去掉重复论文，取每篇摘要中与该节最相关的句子
+7. **分节撰写**（`Send` 并行）：每节只看本节的论文，写清问题与核心思路、代表方法及其差异、优势与局限，用 `[n]` 标注出处
+8. **引言与展望**：根据各节草稿和方向增长统计写引言、跨节趋势和开放问题
+9. **整理**：删除无效引用编号，按首次出现重新编号，生成参考文献列表、Markdown 和 BibTeX（格式与论文页的"复制 BibTeX"相同）
+
+**实测**（"检索增强生成（RAG）"，Sonnet，6 节）：约 40 秒出大纲，确认后约 1.5 分钟写完；检索 100 篇候选、阅读 59 篇摘要，正文引用 56 篇，引用编号全部有效；约 3.6 万输入 + 1.3 万输出 tokens。
+
+**局限**：只读摘要，不读全文，具体实验数字以原文为准；模型偶尔会抄错方法名（如把摘要里的 HippoRAG 写成 HripoRAG），引用指向的论文是真实的，但结论请对照原文。综述保存在当前浏览器（localStorage，最多 30 篇），工作流状态保存在 `data/work/agent_memory.sqlite`，删除综述时一并删除。
+
 ---
 
 ## 项目结构
@@ -260,6 +284,7 @@ AI Research Graph/
 │   ├── core.js               数据加载、分词、检索、本地工作区
 │   ├── app.js                页面与路由（首页、搜索、论文、升温方向、文献库）
 │   ├── ask.js                AI 问答
+│   ├── review.js             文献综述（大纲编辑、进度、导出 Markdown / BibTeX）
 │   ├── connect.js            "连接 Claude"窗口与浏览器直连 Anthropic
 │   └── data/                 每月生成的分片数据（约 230 MB）
 ├── data/pipeline/            数据管线
@@ -281,7 +306,8 @@ AI Research Graph/
 ├── airg/                     服务端检索（Python，读取与网页相同的分片数据，需要 numpy）
 │   ├── search.py             core.js 检索与 ask.js 资料筛选的 Python 移植（结果与浏览器一致）
 │   ├── tools.py              面向 AI Agent 的检索工具（JSON 输入输出 + JSON Schema）
-│   └── agent.py              Agent 模式：LangGraph 工作流（规划、检索、自查补搜、回答、核对）与对话记忆
+│   ├── agent.py              Agent 模式：LangGraph 工作流（规划、检索、自查补搜、回答、核对）与对话记忆
+│   └── review.py             文献综述：LangGraph 工作流（普查、大纲、人工确认、并行分节检索与撰写、引用整理）
 ├── requirements-agent.txt    airg/ 的依赖（numpy、LangGraph、LangSmith）
 ├── scripts/parity_check.py   对比浏览器（core.js）与 Python（airg）的检索结果
 ├── lib/llm.ts                Claude（及 OpenAI）调用封装
@@ -329,6 +355,10 @@ AI Research Graph/
 | `/api/agent` | GET | Agent 模式是否可用 `{available, providers, reason}` |
 | `/api/agent` | POST `{question, thread_id, provider, model, pinned?, history?}` | 运行 Agent；逐行返回 JSON（NDJSON）：`{"type":"step"}` 若干条，最后 `{"type":"result", answer, sources, dirs, …}` 或 `{"type":"error"}` |
 | `/api/agent/forget` | POST `{thread_id}` | 删除一个对话的 Agent 记忆 |
+| `/api/review` | GET | 文献综述是否可用 `{available, providers, reason}` |
+| `/api/review` | POST `{topic, thread_id, provider, model, year_from?, year_to?, confirm?}` | 开始一篇综述；NDJSON：`{"type":"step"}` 若干条，然后 `{"type":"outline", outline}`（暂停等待确认）或 `{"type":"result", title, body, markdown, references, bibtex, …}` |
+| `/api/review/resume` | POST `{thread_id, provider, model, outline:{title, sections:[{id?, title, focus}]}}` | 用修改后的大纲继续，返回同上 |
+| `/api/review/forget` | POST `{thread_id}` | 删除一篇综述的工作流状态 |
 
 在 Python 中也可直接使用：
 
@@ -348,7 +378,7 @@ call_tool("search_papers", {"query": "vision language action model", "year_from"
 - 访客的 API key 只保存在其浏览器中（可选择关闭标签页即清除），只发送给 `api.anthropic.com`
 - 服务器端的 key 只通过环境变量注入；`.env.local`、`data/work/` 不会提交到仓库
 - 邮箱登录模式下，Claude Code 在空的临时目录中运行，提示词要求不调用工具、不读写文件
-- Agent 模式的对话记忆保存在本机 `data/work/agent_memory.sqlite`（不提交）；只有设置了 LangSmith 环境变量时才会把运行记录发给 LangSmith
+- Agent 模式的对话记忆和文献综述的工作流状态保存在本机 `data/work/agent_memory.sqlite`（不提交）；只有设置了 LangSmith 环境变量时才会把运行记录发给 LangSmith
 
 ---
 

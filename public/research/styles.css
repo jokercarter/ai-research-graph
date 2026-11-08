@@ -197,3 +197,29 @@ button.chip { border: none; cursor: pointer; font: inherit; font-size: 12.5px; }
 }
 
 .chip.venue { background: #f3ecff; color: #6b3fb8; font-weight: 600; }
+
+/* 文献综述 */
+.rv-form h3, .rv-outline h3 { margin: 0 0 4px; font-size: 16px; }
+.rv-topic { width: 100%; box-sizing: border-box; margin-top: 10px; resize: vertical; }
+.rv-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 6px 0 10px; }
+.rv-topic-line { font-weight: 600; padding-left: 10px; border-left: 3px solid var(--accent); }
+.rv-label { display: flex; align-items: center; gap: 8px; margin: 12px 0 6px; font-size: 13.5px; color: var(--muted); white-space: nowrap; }
+.rv-sec { border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; margin: 8px 0; background: #fcfcfa; }
+.rv-sec-head { display: flex; align-items: center; gap: 6px; }
+.rv-sec-head .inp { font-weight: 600; }
+.rv-num { width: 22px; height: 22px; border-radius: 50%; background: var(--accent-soft); color: var(--accent); font-size: 12px; display: inline-flex; align-items: center; justify-content: center; flex: none; }
+.rv-focus { width: 100%; box-sizing: border-box; margin-top: 6px; font-size: 13.5px; }
+.rv-papers { margin-top: 6px; font-size: 13px; }
+.rv-papers summary, .rv-new { cursor: pointer; color: var(--muted); font-size: 12.5px; margin-top: 6px; }
+.rv-papers .mini { padding: 5px 0; }
+.rv-doc { padding: 22px 26px; }
+.rv-doc h1 { font-size: 22px; margin: 0 0 6px; }
+.rv-doc h2 { font-size: 17px; margin: 22px 0 6px; padding-bottom: 4px; border-bottom: 1px solid var(--line); }
+.rv-body p { margin: 8px 0; line-height: 1.75; }
+.rv-body ul, .rv-body ol { margin: 6px 0; padding-left: 22px; line-height: 1.7; }
+.rv-body h4 { margin: 12px 0 4px; font-size: 15px; }
+.rv-actions { margin: 14px 0 4px; flex-wrap: wrap; }
+.rv-refs { padding-left: 34px; font-size: 13.5px; line-height: 1.6; }
+.rv-refs li { margin: 5px 0; }
+.rv-steps { margin-top: 14px; }
+@media (max-width: 860px) { .rv-doc { padding: 16px; } .rv-sec-head { flex-wrap: wrap; } }
